@@ -1,6 +1,7 @@
 package vangoh
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/hmac"
 	// Need to register the default hash function for constructors to work
@@ -229,7 +230,11 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	idSplit := strings.Split(orgSplit[1], ":")
 	accessID := idSplit[0]
 	actualSignatureB64 := idSplit[1]
-	actualSignature := base64.StdEncoding.DecodeToString(actualSignatureB64)
+	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
+	if err != nil {
+		malformedHeader.setError(err).respond(w, r, *vg)
+		return errors.New("Malformed Header")
+	}
 
 	/*
 		Load the secret key from the appropriate key provider, given the ID from the
@@ -243,14 +248,17 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	provider, exists := vg.keyProviders[providerKey]
 	if !exists {
 		invalidOrgTag.respond(w, r, *vg)
+		return errors.New("Invalid Org Tag")
 	}
 
 	secretKey, err := provider.GetSecretKey([]byte(accessID))
 	if err != nil {
 		keyLookupFailure.setError(err).respond(w, r, *vg)
+		return errors.New("keyLookupFailure")
 	}
 	if secretKey == nil {
 		unableToAuthenticate.respond(w, r, *vg)
+		return errors.New("ID not found")
 	}
 
 	/*
@@ -259,6 +267,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	signingString, err := vg.createSigningString(w, r)
 	if err != nil {
 		signingFailure.setError(err).respond(w, r, *vg)
+		return errors.New("Signing Failure")
 	}
 
 	/*
@@ -284,5 +293,23 @@ createSigningString creates the string used for signature generation, in accorda
 the specifications as laid out in the package documentation.  Refer there for more detail.
 */
 func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (string, error) {
-	return "", nil
+	var buffer bytes.Buffer
+	newline := "\u000A"
+
+	buffer.WriteString(r.Method)
+	buffer.WriteString(newline)
+
+	buffer.WriteString(r.Header.Get("Content-MD5"))
+	buffer.WriteString(newline)
+
+	buffer.WriteString(r.Header.Get("Content-Type"))
+	buffer.WriteString(newline)
+
+	buffer.WriteString(r.Header.Get("Date"))
+	buffer.WriteString(newline)
+
+	buffer.WriteString("")
+	buffer.WriteString(r.URL.Path)
+
+	return buffer.String(), nil
 }
