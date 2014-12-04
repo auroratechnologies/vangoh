@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -44,12 +42,6 @@ var tpErr = &testProvider{
 	promptErr:  true,
 	identifier: []byte("testIDErr"),
 	secretKey:  []byte("secretKeyErr"),
-}
-
-var awsExampleProvider = &testProvider{
-	promptErr:  false,
-	identifier: []byte("AKIAIOSFODNN7EXAMPLE"),
-	secretKey:  []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 }
 
 func TestNew(t *testing.T) {
@@ -151,21 +143,4 @@ func checkAlgorithm(vg *VanGoH, algo func() hash.Hash) bool {
 	toCheck := fmt.Sprintf("%T", algo())
 
 	return vga == toCheck
-}
-
-func TestAwsExampleGet(t *testing.T) {
-	vg := NewSingleProvider(awsExampleProvider)
-	vg.SetAlgorithm(crypto.SHA1.New)
-
-	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
-	req.Header.Add("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
-	w := httptest.NewRecorder()
-
-	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
 }

@@ -11,6 +11,7 @@ import (
 	"hash"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -41,6 +42,11 @@ documentation.
 */
 const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_]+:" +
 	"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+
+/*
+Newline character, definited in unicode, to avoid platform dependence
+*/
+const newline = "\u000A"
 
 /*
 VanGoH is a struct that forms the primary point of configuration of the middleware
@@ -152,6 +158,34 @@ func (vg *VanGoH) SetAlgorithm(algorithm func() hash.Hash) {
 }
 
 /*
+IncludeHeader adds a regex to the set of custom headers to be included when calculating
+the HMAC hash for a given request.
+
+For instance,
+*/
+func (vg *VanGoH) IncludeHeader(headerRegex string) error {
+	var buf bytes.Buffer
+	if !strings.HasPrefix(headerRegex, "^") {
+		buf.WriteString("^")
+	}
+	buf.WriteString(headerRegex)
+	if !strings.HasSuffix(headerRegex, "$") {
+		buf.WriteString("$")
+	}
+
+	regex := buf.String()
+
+	_, err := regexp.Compile(regex)
+	if err != nil {
+		return err
+	}
+
+	vg.includedHeaders[regex] = struct{}{}
+
+	return nil
+}
+
+/*
 Handler returns an implementation of the http.HandlerFunc type for integration
 with the net/http library
 */
@@ -239,6 +273,11 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	/*
 		Load the secret key from the appropriate key provider, given the ID from the
 		Authorization header
+
+		TODO: Both loading the secret key and generating the signature are independent
+		operations and potentially heavy, be possiby i/o bound and computationally
+		heavy respectively.  It may make sense to split them into go routines and execute
+		concurrently.
 	*/
 	providerKey := "*"
 	if !vg.singleProvider {
@@ -294,7 +333,6 @@ the specifications as laid out in the package documentation.  Refer there for mo
 */
 func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (string, error) {
 	var buffer bytes.Buffer
-	newline := "\u000A"
 
 	buffer.WriteString(r.Method)
 	buffer.WriteString(newline)
@@ -308,8 +346,93 @@ func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (s
 	buffer.WriteString(r.Header.Get("Date"))
 	buffer.WriteString(newline)
 
-	buffer.WriteString("")
+	customHeaders, err := vg.createHeadersString(r)
+	if err != nil {
+		signingFailure.setError(err).respond(w, r, *vg)
+	}
+	buffer.WriteString(customHeaders)
+
 	buffer.WriteString(r.URL.Path)
+
+	return buffer.String(), nil
+}
+
+/*
+createHeadersString is used to create the canonicalized header string, using the
+custom headers as configured in the VanGoH object.
+
+More detail on the methodology used in formatting the headers sting can be found
+in the package documentation.
+*/
+func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
+	// return fast if no header regexes are defined
+	if len(vg.includedHeaders) == 0 {
+		return "", nil
+	}
+
+	// Buffer to write the canonicalized header string into as it's created
+	var buffer bytes.Buffer
+
+	/*
+		For each definied regex, determine the set of headers that match.  Repeat for
+		all regexes, without duplication, to get the final set of custom headers to use.
+	*/
+	var sanitizedHeaders = make(map[string][]string)
+
+	for regex := range vg.includedHeaders {
+		// Error was checked at creation
+		parsedRegex, _ := regexp.Compile(regex)
+		for header := range r.Header {
+			lowerHeader := strings.ToLower(header)
+			if _, found := sanitizedHeaders[lowerHeader]; found {
+				continue
+			}
+			if parsedRegex.MatchString(lowerHeader) {
+				sanitizedHeaders[lowerHeader] = r.Header[header]
+			}
+		}
+	}
+
+	var orderedHeaders []string
+	for header := range sanitizedHeaders {
+		orderedHeaders = append(orderedHeaders, header)
+	}
+	sort.Strings(orderedHeaders)
+
+	/*
+		At this point sanitized contains all the headers to be included in the
+		hash.  Now we need to retrieve their values, and sanitize them appropriately
+	*/
+
+	for header := range orderedHeaders {
+		buffer.WriteString(orderedHeaders[header])
+		buffer.WriteString(":")
+
+		var sanitizedValues []string
+		for i := range sanitizedHeaders[orderedHeaders[header]] {
+			str := sanitizedHeaders[orderedHeaders[header]][i]
+			str = strings.TrimSpace(str)
+			str = strings.Replace(str, "\n", "", -1)
+			sanitizedValues = append(sanitizedValues, str)
+		}
+
+		/*
+			Note that sanitizedValues are unsorted here - the order that they are specified
+			in the header will affect the hash result.
+
+			This conforms with the standard set by AWS, tho it may be more reliable to add
+			this sorting in at some point.
+		*/
+
+		for i := range sanitizedValues {
+			buffer.WriteString(sanitizedValues[i])
+			if i < (len(sanitizedValues) - 1) {
+				buffer.WriteString(",")
+			}
+		}
+
+		buffer.WriteString(newline)
+	}
 
 	return buffer.String(), nil
 }
