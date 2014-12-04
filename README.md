@@ -7,7 +7,7 @@ VanGoH implements the HMAC authentication scheme popularized by [Amazon's AWS](h
 
 In order to compute and check the HMAC signature, it utilizes the Authorization header in the format:
 
-    Authorization: [ORG] [accessID]:[HMACSignature]
+    Authorization: [ORG] [ACCESS_ID]:[HMAC_SIGNATURE]
 
 Where:
  - [ORG] is the organization tag, representing the company or API to be connected to
@@ -63,12 +63,12 @@ func main() {
     keyMap: userMap,
   }
 
-  // Creating out new VanGoH instance
+  // Creating our new VanGoH instance
   vg := vangoh.New()
   // Setting the hashing algorithm to SHA-1
   vg.SetAlgorithm(crypto.SHA1.New)
   // Linking the "AWS" organization tag to the example SecretKeyProvider
-  vg.AddProvider("AWS", userProvider)
+  _ = vg.AddProvider("AWS", userProvider)
   // Adding the custom headers (as a regex) that we want to include in our signature computation
   vg.IncludeHeader("^x-aws-.*")
 
@@ -78,6 +78,6 @@ func main() {
 }
 ```
 
-And with that we have completely replicated the authentication procedure used by AWS!
+And with that we have replicated the core authentication procedure used by AWS!
 
 Full package and usage documentation can be located at [the godocs site](https://godoc.org/github.com/auroratechnologies/vangoh).

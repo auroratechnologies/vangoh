@@ -92,7 +92,7 @@ func TestAwsPutFail(t *testing.T) {
 func TestAwsUpload(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
-	vg.IncludeHeader("^x-amz-.*")
+	vg.IncludeHeader("^X-Amz-.*")
 
 	req, _ := http.NewRequest("PUT", "/static.johnsmith.net/db-backup.dat.gz", nil)
 	req.Header.Set("Date", "Tue, 27 Mar 2007 21:06:08 +0000")
