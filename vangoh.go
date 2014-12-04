@@ -23,9 +23,13 @@ of type byte[], will return the corresponding secret key.
 A naïve implementation may be to reference an in-memory map, but it is also trivial
 to implement a KeyProvider via a database connection.
 
-In the event that an error is encountered in retrieving the key, an error should
-be propogated up to be handled by the server.  The server will then respond with
-a HTTP code 500 internal server error, and report the error string with its response.
+Errors returned are to be returned from GetSecretKey only in the event that an actual
+error is encountered by the provider (I/O error, timeout, etc.).  In this case,
+VanGoH will respond to the request with an HTTP code 500 - Internal Server Error
+
+If the identifier cannot be found by the key provider, expected behavior is to
+return nil, nil.  This indicates to VanGoH that the identifier lookup failed, and
+VanGoH will respond to the request with an HTTP code 403 error - Forbidden
 */
 type SecretKeyProvider interface {
 	GetSecretKey(identifier []byte) ([]byte, error)
@@ -37,8 +41,23 @@ Header that the HMAC signature information is expected to be placed in
 const HMACHeader = "Authorization"
 
 /*
-Expected regex format of the Authorization signature, as described in the package
-documentation.
+Expected regex format of the Authorization signature.
+
+An authorization signature consists of three parts:
+
+	Authorization: [ORG] [ACCESS_ID]:[HMAC_SIGNATURE]
+
+The first component is an organizational tag, which must consist of at least one character,
+and has a valid character set of alphanumeric characters and underscores.
+
+This should be followed by a sinle space, and then the accessID, which also must
+consist of one or more alphanumeric characters and/or underscores.
+
+The access ID must be followed by a single colon ':' character, and then the signature,
+encoded in Base64 (valid characters being all alphanumeric, plus "+", forward slash "/",
+and equals sign "=" as padding on the end if needed.)
+
+Any leading or trailing whitespace around the header will be trimmed before validation.
 */
 const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_]+:" +
 	"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
@@ -49,7 +68,7 @@ Newline character, definited in unicode, to avoid platform dependence
 const newline = "\u000A"
 
 /*
-VanGoH is a struct that forms the primary point of configuration of the middleware
+VanGoH is an object that forms the primary point of configuration of the middleware
 HMAC handler.  It allows for the configuration of the hashing function to use, the
 headers (specified as regexes) to be included in the computed signature, and the
 mapping between organization tags and the secret key providers associated with them.
@@ -78,8 +97,8 @@ type VanGoH struct {
 	/*
 		includedHeaders specifies, as a slice of regex strings, which headers should
 		be used in computing the HMAC signature for each request.  It is common to have
-		an application-wide prefix for headers to be used, i.e. x-aur-meta-user or
-		x-aur-locale.  This could be represented with the include header "^x-aur-"
+		an application-wide prefix for headers to be used, i.e. X-Aur-Meta-User or
+		X-Aur-Locale.  This could be represented with the include header "^X-Aur-"
 	*/
 	includedHeaders map[string]struct{}
 }
@@ -119,8 +138,33 @@ func NewSingleProvider(provider SecretKeyProvider) *VanGoH {
 /*
 AddProvider adds a new SecretKeyProvider, which the org tag maps to.
 
-Will error if the VanGoH instance was created for a single provider, or if
-the org tag already has an identity provider associated with it.
+Will error if the VanGoH instance was created for a single provider (using the
+NewSingleProvider constructor), or if the org tag already has an identity provider
+associated with it.
+
+By supporting different providers based on org tags, there is the ability to configure
+authentication sources based on user type or purpose.  For instance, if an endpoint is
+going to be used by both a small set of internal services as well as external users,
+you could create a different provider for each, as demonstrated below.
+
+Example:
+	func main() {
+		// Provider for internal services credentials (not included with VanGoH)
+		internalProvider := providers.NewInMemoryProvider(...)
+		// Provider for normal user credentials (not included with VanGoH)
+		userProvider := providers.NewDatabaseProvider(...)
+
+		vg := vangoh.New()
+		_ = vg.AddProvider("INT", internalProvider)
+		_ = vg.AddProvider("API", userProvider)
+
+		// Add VanGoH into your web stack
+	}
+
+In this example, any connections made with the authorization header "INT [userID]:[signature]"
+will be authenticated using the internal provider, and connections with the header
+"API [userID]:[signature]" will be authenticated against the user provider, which
+may be much more scalable, but less performant than the internal provider.
 */
 func (vg *VanGoH) AddProvider(org string, skp SecretKeyProvider) error {
 	if vg.singleProvider {
@@ -142,7 +186,7 @@ the "New" method for a given hashing implementation (ie. crypto.SHA1.New)
 In order to set the algorithm, you need to add an import to the algorithm directly,
 even tho most are part of the crypto package:
 
-  import _ "crypto/SHA1"
+	import _ "crypto/SHA1"
 
 	...
 
@@ -161,7 +205,19 @@ func (vg *VanGoH) SetAlgorithm(algorithm func() hash.Hash) {
 IncludeHeader adds a regex to the set of custom headers to be included when calculating
 the HMAC hash for a given request.
 
-For instance,
+It checks against the headers in their canonical form, with the first letter and every
+letter following a hyphen uppercased, and the rest lowercased.
+
+For instance, to match all headers beginning with "X-Aur-", we could include the header
+regex "X-Aur-.*".  It is important to note that this funcationality uses traditional, non-POSIX
+regular expressions, and will add anchoring to the provided regex if it is not included.
+
+This means that the regex "X-Aur" will only match headers with key "X-Aur" exactly.  In
+order to do prefix matching you must add a wildcard match after, i.e. "X-Aur.*"
+
+If no custom headers are included, the signature will be derived from just the HTTP verb,
+Content-Type, Content-MD5, and conical path.
+
 */
 func (vg *VanGoH) IncludeHeader(headerRegex string) error {
 	var buf bytes.Buffer
@@ -188,6 +244,18 @@ func (vg *VanGoH) IncludeHeader(headerRegex string) error {
 /*
 Handler returns an implementation of the http.HandlerFunc type for integration
 with the net/http library
+
+Example integration:
+	func main() {
+		// Creating our new VanGoH instance
+		vg := vangoh.New()
+
+		// Additional configuration and creation of the base handler
+
+		// Route the handler through VanGoH, and ListenAndServer as usual
+		app := vg.Handler(baseHandler)
+		http.ListenAndServe("0.0.0.0:3000", app)
+	}
 */
 func (vg *VanGoH) Handler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +276,21 @@ func (vg *VanGoH) Handler(h http.Handler) http.Handler {
 
 /*
 ChainedHandler is an implementation designed to integrate with Negroni, but may be
-used in anything requiring the chainable signature
+used in anything requiring the chainable signature.
+
+Example use with Negroni:
+	func main() {
+
+		mux := http.NewServeMux()
+
+		// Creating our new VanGoH instance
+		vg := vangoh.NewSingleProvider(keyProvider)
+
+		n := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.HandlerFunc(vg.ChainedHandler))
+		n.UseHandler(mux)
+
+		n.Run(":3000")
+	}
 */
 func (vg *VanGoH) ChainedHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	/*
@@ -246,7 +328,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	/*
 		Verify authorization header exists and is not malformed, and separate components
 	*/
-	authHeader := r.Header.Get("Authorization")
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
 		missingHeader.respond(w, r, *vg)
 		return errors.New("missing header")
@@ -275,7 +357,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 		Authorization header
 
 		TODO: Both loading the secret key and generating the signature are independent
-		operations and potentially heavy, be possiby i/o bound and computationally
+		operations and potentially heavy, being possiby i/o bound and computationally
 		heavy respectively.  It may make sense to split them into go routines and execute
 		concurrently.
 	*/
@@ -381,13 +463,13 @@ func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
 
 	for regex := range vg.includedHeaders {
 		// Error was checked at creation
-		parsedRegex, _ := regexp.Compile(regex)
+		compiledRegex, _ := regexp.Compile(regex)
 		for header := range r.Header {
 			lowerHeader := strings.ToLower(header)
 			if _, found := sanitizedHeaders[lowerHeader]; found {
 				continue
 			}
-			if parsedRegex.MatchString(lowerHeader) {
+			if compiledRegex.MatchString(header) {
 				sanitizedHeaders[lowerHeader] = r.Header[header]
 			}
 		}
