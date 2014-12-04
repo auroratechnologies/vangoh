@@ -3,7 +3,6 @@ package vangoh
 import (
 	"bytes"
 	"crypto"
-	_ "crypto/SHA1"
 	"errors"
 	"fmt"
 	"hash"

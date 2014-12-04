@@ -7,6 +7,7 @@ and Authenticating REST Requests" page - http://docs.aws.amazon.com/AmazonS3/lat
 
 import (
 	"crypto"
+	_ "crypto/SHA1"
 	"net/http"
 	"net/http/httptest"
 	"testing"
