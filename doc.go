@@ -7,6 +7,7 @@
 //
 // It was designed to implement the HMAC scheme that was popularized by Amazon's AWS
 // as described in detail here - http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html
+//
 // The primary characteristic of this implementation is that the signature is placed
 // In the "Authorization" header, along with the access ID, and a tag for the organization.
 //

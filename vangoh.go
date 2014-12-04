@@ -124,10 +124,10 @@ the org tag already has an identity provider associated with it.
 */
 func (vg *VanGoH) AddProvider(org string, skp SecretKeyProvider) error {
 	if vg.singleProvider {
-		return errors.New("Cannot add a provider when created for a single provider")
+		return errors.New("cannot add a provider when created for a single provider")
 	}
 	if _, ok := vg.keyProviders[org]; ok {
-		return errors.New("Cannot add more than one keyProvider for the same org tag")
+		return errors.New("cannot add more than one keyProvider for the same org tag")
 	}
 	vg.keyProviders[org] = skp
 	return nil
@@ -249,13 +249,13 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		missingHeader.respond(w, r, *vg)
-		return errors.New("Missing Header")
+		return errors.New("missing header")
 	}
 
 	match, err := regexp.Match(AuthRegex, []byte(authHeader))
 	if err != nil || !match {
 		malformedHeader.setError(err).respond(w, r, *vg)
-		return errors.New("Malformed Header")
+		return errors.New("malformed header")
 	}
 
 	orgSplit := strings.Split(authHeader, " ")
@@ -267,7 +267,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
 		malformedHeader.setError(err).respond(w, r, *vg)
-		return errors.New("Malformed Header")
+		return errors.New("malformed header")
 	}
 
 	/*
@@ -287,17 +287,17 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	provider, exists := vg.keyProviders[providerKey]
 	if !exists {
 		invalidOrgTag.respond(w, r, *vg)
-		return errors.New("Invalid Org Tag")
+		return errors.New("invalid org tag")
 	}
 
 	secretKey, err := provider.GetSecretKey([]byte(accessID))
 	if err != nil {
 		keyLookupFailure.setError(err).respond(w, r, *vg)
-		return errors.New("keyLookupFailure")
+		return errors.New("key lookup failure")
 	}
 	if secretKey == nil {
 		unableToAuthenticate.respond(w, r, *vg)
-		return errors.New("ID not found")
+		return errors.New("id not found")
 	}
 
 	/*
@@ -306,7 +306,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	signingString, err := vg.createSigningString(w, r)
 	if err != nil {
 		signingFailure.setError(err).respond(w, r, *vg)
-		return errors.New("Signing Failure")
+		return errors.New("signing failure")
 	}
 
 	/*
@@ -318,7 +318,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	if !hmac.Equal(expectedSignature, actualSignature) {
 		unableToAuthenticate.respond(w, r, *vg)
-		return errors.New("Mismatched signatures")
+		return errors.New("mismatched signatures")
 	}
 
 	/*
