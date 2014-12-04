@@ -34,7 +34,7 @@ func (r *responder) setError(err error) *responder {
 }
 
 /*
-All custom headers for responses begin with the prefix "HMAC-"
+All custom headers for responses begin with the prefix "Hmac-"
 
 They do not begin with "X-", in accordance to the deprecation of the convention
 in RFC 6684 - http://tools.ietf.org/html/rfc6648
@@ -62,21 +62,24 @@ func (r *responder) respond(rw http.ResponseWriter, req *http.Request, vg VanGoH
 
 	fmt.Fprintf(rw, "%s\n---\n%s\n", r.title, r.message)
 	if r.detailedError != nil {
-		fmt.Fprintf(rw, "Detailed error message\n---\n%s", r.detailedError.Error())
+		fmt.Fprintf(rw, "===\nDetailed error message\n---\n%s\n", r.detailedError.Error())
 	}
 }
 
-var missingHeader = newResponder(http.StatusBadRequest, "Missing %v Header",
-	fmt.Sprintf("You must supply the authorization header %q to this endpoint", HMACHeader))
+var missingHeader = newResponder(http.StatusBadRequest,
+	fmt.Sprintf("Missing %v Header", HMACHeader),
+	fmt.Sprintf("You must supply the %q header to this endpoint", HMACHeader))
 
-var malformedHeader = newResponder(http.StatusBadRequest, "Malformed %v Header",
-	fmt.Sprintf("The value supplied as the header %q must of the format [ORG] [accesID]:[signature]", HMACHeader))
+var malformedHeader = newResponder(http.StatusBadRequest,
+	fmt.Sprintf("Malformed %v Header", HMACHeader),
+	fmt.Sprintf("The value supplied as the %q header must of the format [ORG] [accesID]:[signature]", HMACHeader))
 
 var invalidOrgTag = newResponder(http.StatusBadRequest, "Invalid Org Tag",
 	fmt.Sprintf("The org tag specified in %q header is invalid", HMACHeader))
 
 var signatureWrongSize = newResponder(http.StatusBadRequest, "Signature Wrong Size",
-	"The length of the HMAC signature must exactly match the output of the algorithm in use")
+	"The length of the HMAC signature must exactly match the output of the algorithm in use.  "+
+		"Check to make sure your algorithm matches that in use on the server.")
 
 var unableToAuthenticate = newResponder(http.StatusForbidden, "Unable to Authenticate",
 	"The request you have made was unable to be authenticated")
