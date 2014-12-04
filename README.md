@@ -1,4 +1,4 @@
-VanGoH
+VanGoH [![GoDoc](https://godoc.org/github.com/auroratechnologies/vangoh?status.svg)](https://godoc.org/github.com/auroratechnologies/vangoh)
 ======
 
 ######The Vanilla Go HMAC handler

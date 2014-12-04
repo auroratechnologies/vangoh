@@ -18,7 +18,7 @@ type testProvider struct {
 
 func (tp *testProvider) GetSecretKey(identifier []byte) ([]byte, error) {
 	if tp.promptErr {
-		return nil, errors.New("Testing Error")
+		return nil, errors.New("testing error")
 	}
 	if !bytes.Equal(tp.identifier, identifier) {
 		return nil, nil
