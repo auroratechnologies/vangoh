@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 var awsExampleProvider = &testProvider{
@@ -134,6 +135,70 @@ func TestAwsUploadFail(t *testing.T) {
 	vg.authenticateRequest(w, req)
 
 	if w.Code != http.StatusForbidden {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestTimeSkew(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	date, err := time.Parse(time.RFC1123Z, "Tue, 27 Mar 2007 19:36:42 +0000")
+	if err != nil {
+		t.Error("Date couldn't be parsed")
+	}
+	skew := time.Now().Sub(date) + (time.Second * 10)
+	vg.setMaxTimeSkew(skew)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	w := httptest.NewRecorder()
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestTimeSkewFailue(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	vg.setMaxTimeSkew(time.Minute * 15)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	w := httptest.NewRecorder()
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestMalformedDate(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	date, err := time.Parse(time.RFC1123Z, "Tue, 27 Mar 2007 19:36:42 +0000")
+	if err != nil {
+		t.Error("Date couldn't be parsed")
+	}
+	skew := time.Now().Sub(date) + (time.Second * 10)
+	vg.setMaxTimeSkew(skew)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("Date", "2007-03-27T19:36:42Z00:00") // RFC 3339 - not supported
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	w := httptest.NewRecorder()
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusBadRequest {
 		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
 			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
 	}

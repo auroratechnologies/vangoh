@@ -70,9 +70,17 @@ var missingHeader = newResponder(http.StatusBadRequest,
 	fmt.Sprintf("Missing %v Header", HMACHeader),
 	fmt.Sprintf("You must supply the %q header to this endpoint", HMACHeader))
 
-var malformedHeader = newResponder(http.StatusBadRequest,
+var malformedHmacHeader = newResponder(http.StatusBadRequest,
 	fmt.Sprintf("Malformed %v Header", HMACHeader),
 	fmt.Sprintf("The value supplied as the %q header must of the format [ORG] [accesID]:[signature]", HMACHeader))
+
+var malformedDateHeader = newResponder(http.StatusBadRequest,
+	fmt.Sprintf("Invalid date format"),
+	fmt.Sprintf("The format of the Date header is not in a format able to be parsed by the server"))
+
+var timeSkewTooLarge = newResponder(http.StatusForbidden,
+	fmt.Sprintf("Time too skewed"),
+	fmt.Sprintf("The value supplied as the Date header is too skewed from the system time"))
 
 var invalidOrgTag = newResponder(http.StatusBadRequest, "Invalid Org Tag",
 	fmt.Sprintf("The org tag specified in %q header is invalid", HMACHeader))
