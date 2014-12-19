@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/hmac"
+	"time"
 	// Need to register the default hash function for constructors to work
 	_ "crypto/sha256"
 	"encoding/base64"
@@ -101,6 +102,15 @@ type VanGoH struct {
 		X-Aur-Locale.  This could be represented with the include header "^X-Aur-"
 	*/
 	includedHeaders map[string]struct{}
+
+	/*
+		maxTimeSkew represents the required immediacy of a request for the server to
+		determine its validity.  It's based off of the time specified in the date header,
+		and compared to the server time when the request is recieved.  Defaults to 15 minutes
+	*/
+	maxTimeSkew time.Duration
+
+	checkTime bool
 }
 
 /*
@@ -116,6 +126,8 @@ func New() *VanGoH {
 		keyProviders:    make(map[string]SecretKeyProvider),
 		algorithm:       crypto.SHA256.New,
 		includedHeaders: make(map[string]struct{}),
+		checkTime:       false,
+		maxTimeSkew:     time.Minute * 15,
 	}
 }
 
@@ -241,6 +253,11 @@ func (vg *VanGoH) IncludeHeader(headerRegex string) error {
 	return nil
 }
 
+func (vg *VanGoH) setMaxTimeSkew(timeSkew time.Duration) {
+	vg.checkTime = true
+	vg.maxTimeSkew = timeSkew
+}
+
 /*
 Handler returns an implementation of the http.HandlerFunc type for integration
 with the net/http library
@@ -336,7 +353,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	match, err := regexp.Match(AuthRegex, []byte(authHeader))
 	if err != nil || !match {
-		malformedHeader.setError(err).respond(w, r, *vg)
+		malformedHmacHeader.setError(err).respond(w, r, *vg)
 		return errors.New("malformed header")
 	}
 
@@ -348,8 +365,26 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	actualSignatureB64 := idSplit[1]
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
-		malformedHeader.setError(err).respond(w, r, *vg)
+		malformedHmacHeader.setError(err).respond(w, r, *vg)
 		return errors.New("malformed header")
+	}
+
+	/*
+		Check for excessive time skew in request
+	*/
+	if vg.checkTime {
+		dateHeader := strings.TrimSpace(r.Header.Get("Date"))
+		date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
+			time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
+		if err != nil {
+			malformedHmacHeader.setError(err).respond(w, r, *vg)
+			return errors.New("malformed date header")
+		}
+		diff := time.Now().Sub(date)
+		if diff > vg.maxTimeSkew {
+			timeSkewTooLarge.respond(w, r, *vg)
+			return errors.New("time skew too large")
+		}
 	}
 
 	/*
@@ -407,6 +442,17 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 		If we have made it this far, authorization is successful.  Return nil error
 	*/
 	return nil
+}
+
+func multiFormatDateParse(formats []string, dateStr string) (time.Time, error) {
+	for index := range formats {
+		date, err := time.Parse(formats[index], dateStr)
+		if err == nil {
+			return date, nil
+		}
+	}
+
+	return time.Now(), errors.New("Date does not match any valid format")
 }
 
 /*
