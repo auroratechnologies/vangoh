@@ -253,7 +253,28 @@ func (vg *VanGoH) IncludeHeader(headerRegex string) error {
 	return nil
 }
 
-func (vg *VanGoH) setMaxTimeSkew(timeSkew time.Duration) {
+/*
+SetMaxTimeSkew sets the maximum allowable duration between the date and time specified
+in the Date header and the server time when the response is processed.  If the date in
+the header exceeds the duration VanGoH will respond to the request with a 403 forbidden
+error.
+
+For example, to match the behavior of AWS, which has a 15 minute allowable time skew
+window, you could configure your VanGoH instance like this:
+
+	vg := vangoh.New()
+	vg.SetMaxTimeSkew(time.Minute * 15)
+
+When checking the date header, VanGoH follows the precedent of RFC 2616, accepting dates
+in any of the following formats:
+	ANSIC       = "Mon Jan _2 15:04:05 2006"
+	RFC822      = "02 Jan 06 15:04 MST"
+	RFC822Z     = "02 Jan 06 15:04 -0700"
+	RFC850      = "Monday, 02-Jan-06 15:04:05 MST"
+	RFC1123     = "Mon, 02 Jan 2006 15:04:05 MST"
+	RFC1123Z    = "Mon, 02 Jan 2006 15:04:05 -0700"
+*/
+func (vg *VanGoH) SetMaxTimeSkew(timeSkew time.Duration) {
 	vg.checkTime = true
 	vg.maxTimeSkew = timeSkew
 }
