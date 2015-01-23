@@ -148,7 +148,7 @@ func TestTimeSkew(t *testing.T) {
 		t.Error("Date couldn't be parsed")
 	}
 	skew := time.Now().Sub(date) + (time.Second * 10)
-	vg.setMaxTimeSkew(skew)
+	vg.SetMaxTimeSkew(skew)
 
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
@@ -166,7 +166,7 @@ func TestTimeSkew(t *testing.T) {
 func TestTimeSkewFailue(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
-	vg.setMaxTimeSkew(time.Minute * 15)
+	vg.SetMaxTimeSkew(time.Minute * 15)
 
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
@@ -189,7 +189,7 @@ func TestMalformedDate(t *testing.T) {
 		t.Error("Date couldn't be parsed")
 	}
 	skew := time.Now().Sub(date) + (time.Second * 10)
-	vg.setMaxTimeSkew(skew)
+	vg.SetMaxTimeSkew(skew)
 
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	req.Header.Set("Date", "2007-03-27T19:36:42Z00:00") // RFC 3339 - not supported
