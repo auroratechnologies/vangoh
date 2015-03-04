@@ -143,3 +143,33 @@ func checkAlgorithm(vg *VanGoH, algo func() hash.Hash) bool {
 
 	return vga == toCheck
 }
+
+func TestAnchoredRegex(t *testing.T) {
+	vg := New()
+
+	err := vg.IncludeHeader("^X-Amz-.*$")
+
+	if err != nil {
+		t.Error("Including anchored regex failed")
+	}
+}
+
+func TestUnanchoredRegex(t *testing.T) {
+	vg := New()
+
+	err := vg.IncludeHeader("X-Amz-.*")
+
+	if err != nil {
+		t.Error("Including unanchored regex failed")
+	}
+}
+
+func TestInvalidRegex(t *testing.T) {
+	vg := New()
+
+	err := vg.IncludeHeader("X-Amz-.*[")
+
+	if err == nil {
+		t.Error("Invalid regex should have thrown an error")
+	}
+}

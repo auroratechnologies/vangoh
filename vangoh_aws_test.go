@@ -20,7 +20,7 @@ var awsExampleProvider = &testProvider{
 	secretKey:  []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 }
 
-func TestAwsGet(t *testing.T) {
+func awsGetVg() (*VanGoH, *httptest.ResponseRecorder, *http.Request) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
 
@@ -28,6 +28,12 @@ func TestAwsGet(t *testing.T) {
 	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
 	w := httptest.NewRecorder()
+
+	return vg, w, req
+}
+
+func TestAwsGet(t *testing.T) {
+	vg, w, req := awsGetVg()
 
 	vg.authenticateRequest(w, req)
 
@@ -93,7 +99,7 @@ func TestAwsPutFail(t *testing.T) {
 func TestAwsUpload(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
-	vg.IncludeHeader("^X-Amz-.*")
+	vg.IncludeHeader("^X-Amz-.*$")
 
 	req, _ := http.NewRequest("PUT", "/static.johnsmith.net/db-backup.dat.gz", nil)
 	req.Header.Set("Date", "Tue, 27 Mar 2007 21:06:08 +0000")
@@ -199,6 +205,188 @@ func TestMalformedDate(t *testing.T) {
 	vg.authenticateRequest(w, req)
 
 	if w.Code != http.StatusBadRequest {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+// Use the AWS credentials to test handler functions
+type testHandler struct {
+	called bool
+}
+
+func newTestHandler() *testHandler {
+	return &testHandler{
+		called: false,
+	}
+}
+
+func (th *testHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	th.called = true
+}
+
+func TestHandler(t *testing.T) {
+	vg, w, req := awsGetVg()
+
+	th := newTestHandler()
+
+	handler := vg.Handler(th)
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+
+	if !th.called {
+		t.Error("Handler wasn't called, despite valid authentication")
+	}
+}
+
+func TestHandlerFailure(t *testing.T) {
+	vg, w, req := awsGetVg()
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zq+IXMU=")
+
+	th := newTestHandler()
+
+	handler := vg.Handler(th)
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+
+	if th.called {
+		t.Error("Handler was called, despite invalid authentication")
+	}
+}
+
+func TestChainedHandler(t *testing.T) {
+	vg, w, req := awsGetVg()
+
+	th := newTestHandler()
+
+	vg.ChainedHandler(w, req, th.ServeHTTP)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+
+	if !th.called {
+		t.Error("Handler wasn't called, despite valid authentication")
+	}
+}
+
+func TestMissingHeader(t *testing.T) {
+	vg, w, req := awsGetVg()
+
+	req.Header.Del("Authorization")
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestMalformedHeader(t *testing.T) {
+	vg, w, req := awsGetVg()
+
+	req.Header.Set("Authorization", "MISSINGORGTAG:DOESNTMATTER=")
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestMalformedB64(t *testing.T) {
+	vg, w, req := awsGetVg()
+
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+/Ydj0vQ697zp+IXMU=")
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestMultiProvider(t *testing.T) {
+	vg := New()
+	vg.AddProvider("AWS", awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	w := httptest.NewRecorder()
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestInvalidOrgTax(t *testing.T) {
+	vg := New()
+	vg.AddProvider("AWS", awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
+	req.Header.Set("Authorization", "AUR AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	w := httptest.NewRecorder()
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+var errTestProvider = &testProvider{
+	promptErr:  true,
+	identifier: []byte("AKIAIOSFODNN7EXAMPLE"),
+	secretKey:  []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+}
+
+func TestKeyLookupError(t *testing.T) {
+	vg := New()
+	vg.AddProvider("AWS", errTestProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	w := httptest.NewRecorder()
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
+			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
+	}
+}
+
+func TestKeyNotFound(t *testing.T) {
+	vg, w, req := awsGetVg()
+	req.Header.Set("Authorization", "AWS NONEXISTENTKEY:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+
+	vg.authenticateRequest(w, req)
+
+	if w.Code != http.StatusForbidden {
 		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
 			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
 	}

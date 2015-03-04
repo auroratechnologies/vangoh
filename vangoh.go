@@ -384,11 +384,8 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	idSplit := strings.Split(orgSplit[1], ":")
 	accessID := idSplit[0]
 	actualSignatureB64 := idSplit[1]
-	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
-	if err != nil {
-		malformedHmacHeader.setError(err).respond(w, r, *vg)
-		return errors.New("malformed header")
-	}
+	// Signature is validated as B64 in regex, no need to check err
+	actualSignature, _ := base64.StdEncoding.DecodeString(actualSignatureB64)
 
 	/*
 		Check for excessive time skew in request
@@ -441,11 +438,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	/*
 	  Calculate the string to be signed based on the headers and VanGoH configuration
 	*/
-	signingString, err := vg.createSigningString(w, r)
-	if err != nil {
-		signingFailure.setError(err).respond(w, r, *vg)
-		return errors.New("signing failure")
-	}
+	signingString := vg.createSigningString(w, r)
 
 	/*
 		Conduct our own signing and verify against the signature in the Authorization header
@@ -480,7 +473,7 @@ func multiFormatDateParse(formats []string, dateStr string) (time.Time, error) {
 createSigningString creates the string used for signature generation, in accordance with
 the specifications as laid out in the package documentation.  Refer there for more detail.
 */
-func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (string, error) {
+func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) string {
 	var buffer bytes.Buffer
 
 	buffer.WriteString(r.Method)
@@ -495,15 +488,12 @@ func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (s
 	buffer.WriteString(r.Header.Get("Date"))
 	buffer.WriteString(newline)
 
-	customHeaders, err := vg.createHeadersString(r)
-	if err != nil {
-		signingFailure.setError(err).respond(w, r, *vg)
-	}
+	customHeaders := vg.createHeadersString(r)
 	buffer.WriteString(customHeaders)
 
 	buffer.WriteString(r.URL.Path)
 
-	return buffer.String(), nil
+	return buffer.String()
 }
 
 /*
@@ -513,10 +503,10 @@ custom headers as configured in the VanGoH object.
 More detail on the methodology used in formatting the headers sting can be found
 in the package documentation.
 */
-func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
+func (vg *VanGoH) createHeadersString(r *http.Request) string {
 	// return fast if no header regexes are defined
 	if len(vg.includedHeaders) == 0 {
-		return "", nil
+		return ""
 	}
 
 	// Buffer to write the canonicalized header string into as it's created
@@ -533,9 +523,6 @@ func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
 		compiledRegex, _ := regexp.Compile(regex)
 		for header := range r.Header {
 			lowerHeader := strings.ToLower(header)
-			if _, found := sanitizedHeaders[lowerHeader]; found {
-				continue
-			}
 			if compiledRegex.MatchString(header) {
 				sanitizedHeaders[lowerHeader] = r.Header[header]
 			}
@@ -583,5 +570,5 @@ func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
 		buffer.WriteString(newline)
 	}
 
-	return buffer.String(), nil
+	return buffer.String()
 }
