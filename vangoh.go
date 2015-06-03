@@ -228,7 +228,7 @@ This means that the regex "X-Aur" will only match headers with key "X-Aur" exact
 order to do prefix matching you must add a wildcard match after, i.e. "X-Aur.*"
 
 If no custom headers are included, the signature will be derived from just the HTTP verb,
-Content-Type, Content-MD5, and conical path.
+Content-Type, Content-MD5, and canonical path.
 
 */
 func (vg *VanGoH) IncludeHeader(headerRegex string) error {
