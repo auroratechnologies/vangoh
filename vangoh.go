@@ -517,7 +517,7 @@ func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
 	var buffer bytes.Buffer
 
 	/*
-		For each definied regex, determine the set of headers that match.  Repeat for
+		For each defined regex, determine the set of headers that match.  Repeat for
 		all regexes, without duplication, to get the final set of custom headers to use.
 	*/
 	var sanitizedHeaders = make(map[string][]string)
