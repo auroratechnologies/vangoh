@@ -109,8 +109,6 @@ type VanGoH struct {
 		and compared to the server time when the request is recieved.  Defaults to 15 minutes
 	*/
 	maxTimeSkew time.Duration
-
-	checkTime bool
 }
 
 /*
@@ -126,7 +124,6 @@ func New() *VanGoH {
 		keyProviders:    make(map[string]SecretKeyProvider),
 		algorithm:       crypto.SHA256.New,
 		includedHeaders: make(map[string]struct{}),
-		checkTime:       false,
 		maxTimeSkew:     time.Minute * 15,
 	}
 }
@@ -275,7 +272,6 @@ in any of the following formats:
 	RFC1123Z    = "Mon, 02 Jan 2006 15:04:05 -0700"
 */
 func (vg *VanGoH) SetMaxTimeSkew(timeSkew time.Duration) {
-	vg.checkTime = true
 	vg.maxTimeSkew = timeSkew
 }
 
@@ -374,7 +370,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	match, err := regexp.Match(AuthRegex, []byte(authHeader))
 	if err != nil || !match {
-		malformedHmacHeader.setError(err).respond(w, r, *vg)
+		malformedHmacHeader.respond(w, r, *vg)
 		return errors.New("malformed header")
 	}
 
@@ -386,26 +382,24 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	actualSignatureB64 := idSplit[1]
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
-		malformedHmacHeader.setError(err).respond(w, r, *vg)
+		malformedHmacHeader.respond(w, r, *vg)
 		return errors.New("malformed header")
 	}
 
 	/*
 		Check for excessive time skew in request
 	*/
-	if vg.checkTime {
-		dateHeader := strings.TrimSpace(r.Header.Get("Date"))
-		date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
-			time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
-		if err != nil {
-			malformedHmacHeader.setError(err).respond(w, r, *vg)
-			return errors.New("malformed date header")
-		}
-		diff := time.Now().Sub(date)
-		if diff > vg.maxTimeSkew {
-			timeSkewTooLarge.respond(w, r, *vg)
-			return errors.New("time skew too large")
-		}
+	dateHeader := strings.TrimSpace(r.Header.Get("Date"))
+	date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
+		time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
+	if err != nil {
+		malformedHmacHeader.respond(w, r, *vg)
+		return errors.New("malformed date header")
+	}
+	diff := time.Now().Sub(date)
+	if diff > vg.maxTimeSkew {
+		timeSkewTooLarge.respond(w, r, *vg)
+		return errors.New("time skew too large")
 	}
 
 	/*
@@ -430,7 +424,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	secretKey, err := provider.GetSecretKey([]byte(accessID))
 	if err != nil {
-		keyLookupFailure.setError(err).respond(w, r, *vg)
+		keyLookupFailure.respond(w, r, *vg)
 		return errors.New("key lookup failure")
 	}
 	if secretKey == nil {
@@ -443,7 +437,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	*/
 	signingString, err := vg.createSigningString(w, r)
 	if err != nil {
-		signingFailure.setError(err).respond(w, r, *vg)
+		signingFailure.respond(w, r, *vg)
 		return errors.New("signing failure")
 	}
 
@@ -497,7 +491,7 @@ func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (s
 
 	customHeaders, err := vg.createHeadersString(r)
 	if err != nil {
-		signingFailure.setError(err).respond(w, r, *vg)
+		signingFailure.respond(w, r, *vg)
 	}
 	buffer.WriteString(customHeaders)
 

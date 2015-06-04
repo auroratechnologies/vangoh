@@ -12,25 +12,9 @@ The base design of this utility class was influenced by schnellburger, by hydrog
 https://github.com/hydrogen18/schnellburger
 */
 type responder struct {
-	status        int
-	message       string
-	title         string
-	detailedError error
-}
-
-func newResponder(status int, title string, message string) *responder {
-	r := &responder{
-		status:        status,
-		title:         title,
-		message:       message,
-		detailedError: nil,
-	}
-	return r
-}
-
-func (r *responder) setError(err error) *responder {
-	r.detailedError = err
-	return r
+	status  int
+	message string
+	title   string
 }
 
 /*
@@ -59,41 +43,69 @@ func (r *responder) respond(rw http.ResponseWriter, req *http.Request, vg VanGoH
 
 	rw.Header().Add("Content-Type", "text/plain")
 	rw.WriteHeader(r.status)
-
 	fmt.Fprintf(rw, "%s\n---\n%s\n", r.title, r.message)
-	if r.detailedError != nil {
-		fmt.Fprintf(rw, "===\nDetailed error message\n---\n%s\n", r.detailedError.Error())
-	}
 }
 
-var missingHeader = newResponder(http.StatusBadRequest,
+var missingHeader = &responder{
+	http.StatusBadRequest,
 	fmt.Sprintf("Missing %v Header", HMACHeader),
-	fmt.Sprintf("You must supply the %q header to this endpoint", HMACHeader))
+	fmt.Sprintf("You must supply the %q header to this endpoint", HMACHeader),
+}
 
-var malformedHmacHeader = newResponder(http.StatusBadRequest,
+var malformedHmacHeader = &responder{
+	http.StatusBadRequest,
 	fmt.Sprintf("Malformed %v Header", HMACHeader),
-	fmt.Sprintf("The value supplied as the %q header must of the format [ORG] [accesID]:[signature]", HMACHeader))
+	fmt.Sprintf(
+		"The value supplied as the %q header must of the format "+
+			"[ORG] [accesID]:[signature]", HMACHeader),
+}
 
-var malformedDateHeader = newResponder(http.StatusBadRequest,
+var malformedDateHeader = &responder{
+	http.StatusBadRequest,
 	fmt.Sprintf("Invalid date format"),
-	fmt.Sprintf("The format of the Date header is not in a format able to be parsed by the server"))
+	fmt.Sprintf(
+		"The format of the Date header is not in a format able to be parsed by " +
+			"the server"),
+}
 
-var timeSkewTooLarge = newResponder(http.StatusForbidden,
+var timeSkewTooLarge = &responder{
+	http.StatusForbidden,
 	fmt.Sprintf("Time too skewed"),
-	fmt.Sprintf("The value supplied as the Date header is too skewed from the system time"))
+	fmt.Sprintf(
+		"The value supplied as the Date header is too skewed from the system " +
+			"time"),
+}
 
-var invalidOrgTag = newResponder(http.StatusBadRequest, "Invalid Org Tag",
-	fmt.Sprintf("The org tag specified in %q header is invalid", HMACHeader))
+var invalidOrgTag = &responder{
+	http.StatusBadRequest,
+	"Invalid Org Tag",
+	fmt.Sprintf("The org tag specified in %q header is invalid", HMACHeader),
+}
 
-var signatureWrongSize = newResponder(http.StatusBadRequest, "Signature Wrong Size",
-	"The length of the HMAC signature must exactly match the output of the algorithm in use.  "+
-		"Check to make sure your algorithm matches that in use on the server.")
+var signatureWrongSize = &responder{
+	http.StatusBadRequest,
+	"Signature Wrong Size",
+	"The length of the HMAC signature must exactly match the output of the " +
+		"algorithm in use. Check to make sure your algorithm matches that in " +
+		"use on the server.",
+}
 
-var unableToAuthenticate = newResponder(http.StatusForbidden, "Unable to Authenticate",
-	"The request you have made was unable to be authenticated")
+var unableToAuthenticate = &responder{
+	http.StatusForbidden,
+	"Unable to Authenticate",
+	"The request you have made was unable to be authenticated",
+}
 
-var keyLookupFailure = newResponder(http.StatusInternalServerError, "Key Lookup Failure",
-	"Failure while attempting to lookup the secret key for the provided access ID")
+var keyLookupFailure = &responder{
+	http.StatusInternalServerError,
+	"Key Lookup Failure",
+	"Failure while attempting to lookup the secret key for the provided " +
+		"access ID",
+}
 
-var signingFailure = newResponder(http.StatusInternalServerError, "Signing Failure",
-	"Error encountered when attempting to generate the signing string to be hashed")
+var signingFailure = &responder{
+	http.StatusInternalServerError,
+	"Signing Failure",
+	"Error encountered when attempting to generate the signing string to " +
+		"be hashed",
+}
