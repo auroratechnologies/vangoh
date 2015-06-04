@@ -26,18 +26,18 @@ to implement a KeyProvider via a database connection.
 
 Errors returned are to be returned from GetSecretKey only in the event that an actual
 error is encountered by the provider (I/O error, timeout, etc.).  In this case,
-VanGoH will respond to the request with an HTTP code 500 - Internal Server Error
+VanGoH will respond to the request with an HTTP code 500 - Internal Server Error.
 
 If the identifier cannot be found by the key provider, expected behavior is to
 return nil, nil.  This indicates to VanGoH that the identifier lookup failed, and
-VanGoH will respond to the request with an HTTP code 403 error - Forbidden
+VanGoH will respond to the request with an HTTP code 403 error - Forbidden.
 */
 type SecretKeyProvider interface {
 	GetSecretKey(identifier []byte) ([]byte, error)
 }
 
 /*
-Header that the HMAC signature information is expected to be placed in
+Name of the header carrying Organization, Access ID, and HMAC Signature information.
 */
 const HMACHeader = "Authorization"
 
@@ -64,7 +64,7 @@ const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_]+:" +
 	"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
 
 /*
-Newline character, definited in unicode, to avoid platform dependence
+Newline character, definited in unicode, to avoid platform dependence.
 */
 const newline = "\u000A"
 
@@ -277,7 +277,7 @@ func (vg *VanGoH) SetMaxTimeSkew(timeSkew time.Duration) {
 
 /*
 Handler returns an implementation of the http.HandlerFunc type for integration
-with the net/http library
+with the net/http library.
 
 Example integration:
 	func main() {
@@ -330,7 +330,7 @@ func (vg *VanGoH) ChainedHandler(w http.ResponseWriter, r *http.Request, next ht
 	/*
 		Hand the request off to be authenticated.  If an error is encountered, err will be
 		non-null, but authenticateRequest will take care of writing the appropriate http
-		response on the ResponseWriter
+		response on the ResponseWriter.
 	*/
 	err := vg.authenticateRequest(w, r)
 
@@ -359,19 +359,15 @@ If the keys match, the method returns without error.  Otherwise, the method retu
 a non-nill error, and writes an appropriate HTTP response on the provided ResponseWriter.
 */
 func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) error {
-	/*
-		Verify authorization header exists and is not malformed, and separate components
-	*/
+	// Verify authorization header exists and is not malformed, and separate components.
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
-		missingHeader.respond(w, r, *vg)
-		return errors.New("missing header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "missing header")
 	}
 
 	match, err := regexp.Match(AuthRegex, []byte(authHeader))
 	if err != nil || !match {
-		malformedHmacHeader.respond(w, r, *vg)
-		return errors.New("malformed header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "malformed header")
 	}
 
 	orgSplit := strings.Split(authHeader, " ")
@@ -382,35 +378,28 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	actualSignatureB64 := idSplit[1]
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
-		malformedHmacHeader.respond(w, r, *vg)
-		return errors.New("malformed header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "malformed header")
 	}
 
-	/*
-		Check for excessive time skew in request
-	*/
+	// Always check for excessive time skew in request.
 	dateHeader := strings.TrimSpace(r.Header.Get("Date"))
 	date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
 		time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
 	if err != nil {
-		malformedHmacHeader.respond(w, r, *vg)
-		return errors.New("malformed date header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "malformed date")
 	}
 	diff := time.Now().Sub(date)
 	if diff > vg.maxTimeSkew {
-		timeSkewTooLarge.respond(w, r, *vg)
-		return errors.New("time skew too large")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "invalid date")
 	}
 
-	/*
-		Load the secret key from the appropriate key provider, given the ID from the
-		Authorization header
+	// Load the secret key from the appropriate key provider, given the ID from the
+	// Authorization header.
 
-		TODO: Both loading the secret key and generating the signature are independent
-		operations and potentially heavy, being possiby i/o bound and computationally
-		heavy respectively.  It may make sense to split them into go routines and execute
-		concurrently.
-	*/
+	// TODO: Both loading the secret key and generating the signature are independent
+	// operations and potentially heavy, being possiby i/o bound and computationally
+	// heavy respectively.  It may make sense to split them into go routines and execute
+	// concurrently.
 	providerKey := "*"
 	if !vg.singleProvider {
 		providerKey = org
@@ -418,51 +407,39 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	provider, exists := vg.keyProviders[providerKey]
 	if !exists {
-		invalidOrgTag.respond(w, r, *vg)
-		return errors.New("invalid org tag")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "invalid organization")
 	}
 
 	secretKey, err := provider.GetSecretKey([]byte(accessID))
 	if err != nil {
-		keyLookupFailure.respond(w, r, *vg)
-		return errors.New("key lookup failure")
+		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "key lookup failure")
 	}
 	if secretKey == nil {
-		unableToAuthenticate.respond(w, r, *vg)
-		return errors.New("id not found")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "invalid access id")
 	}
 
-	/*
-	  Calculate the string to be signed based on the headers and VanGoH configuration
-	*/
+	// Calculate the string to be signed based on the headers and VanGoH configuration.
 	signingString, err := vg.createSigningString(w, r)
 	if err != nil {
-		signingFailure.respond(w, r, *vg)
-		return errors.New("signing failure")
+		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "signing failure")
 	}
 
-	/*
-		Conduct our own signing and verify against the signature in the Authorization header
-	*/
+	// Conduct our own signing and verify against the signature in the Authorization header.
 	mac := hmac.New(vg.algorithm, secretKey)
 	mac.Write([]byte(signingString))
 	expectedSignature := mac.Sum(nil)
 
 	if !hmac.Equal(expectedSignature, actualSignature) {
-		unableToAuthenticate.respond(w, r, *vg)
-		return errors.New("mismatched signatures")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "mismatched signature")
 	}
 
-	/*
-		If we have made it this far, authorization is successful.  Return nil error
-	*/
+	// If we have made it this far, authorization is successful.
 	return nil
 }
 
 func multiFormatDateParse(formats []string, dateStr string) (time.Time, error) {
 	for index := range formats {
-		date, err := time.Parse(formats[index], dateStr)
-		if err == nil {
+		if date, err := time.Parse(formats[index], dateStr); err == nil {
 			return date, nil
 		}
 	}
@@ -472,7 +449,8 @@ func multiFormatDateParse(formats []string, dateStr string) (time.Time, error) {
 
 /*
 createSigningString creates the string used for signature generation, in accordance with
-the specifications as laid out in the package documentation.  Refer there for more detail.
+the specifications as laid out in the package documentation. Refer there for more detail,
+or to the Amazon Signature V2 documentation: http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html.
 */
 func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (string, error) {
 	var buffer bytes.Buffer
@@ -491,7 +469,7 @@ func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (s
 
 	customHeaders, err := vg.createHeadersString(r)
 	if err != nil {
-		signingFailure.respond(w, r, *vg)
+		return "", errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "signing failure")
 	}
 	buffer.WriteString(customHeaders)
 

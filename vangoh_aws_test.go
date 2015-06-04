@@ -61,15 +61,13 @@ func addAuthorizationHeader(
 func assertStatus(t *testing.T, status int, w *httptest.ResponseRecorder) {
 	if w.Code != status {
 		t.Errorf(
-			"Authentication didn't return expected status, instead returned %d, "+
-				"with message %q",
-			w.Code,
-			w.Header().Get(errorMessageHeader))
+			"Authentication didn't return expected status, instead returned %d",
+			w.Code)
 		t.FailNow()
 	}
 }
 
-func TestAwsGetSucceedsWithCorrectSignature(t *testing.T) {
+func TestGetSucceedsWithCorrectSignature(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
 
@@ -83,7 +81,7 @@ func TestAwsGetSucceedsWithCorrectSignature(t *testing.T) {
 	assertStatus(t, http.StatusOK, w)
 }
 
-func TestAwsGetFailsWithIncorrectSignature(t *testing.T) {
+func TestGetFailsWithIncorrectSignature(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
 
@@ -94,6 +92,21 @@ func TestAwsGetFailsWithIncorrectSignature(t *testing.T) {
 	validSignature := constructTestHMACb64(t, awsExampleProvider, vg, req, w)
 	invalidSignature := "aaaa" + validSignature
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
+
+	vg.authenticateRequest(w, req)
+	assertStatus(t, http.StatusForbidden, w)
+}
+
+func TestGetFailsWithSkewedTime(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	w := httptest.NewRecorder()
+
+	skewedDateStr := (time.Now().Add(-1 * vg.maxTimeSkew)).UTC().Format(time.RFC1123Z)
+	req.Header.Set("Date", skewedDateStr)
+	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
 
 	vg.authenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
@@ -111,11 +124,7 @@ func TestAwsPut(t *testing.T) {
 	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusOK, w)
 }
 
 func TestAwsPutFail(t *testing.T) {
@@ -129,11 +138,7 @@ func TestAwsPutFail(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusForbidden, w)
 }
 
 func TestAwsUpload(t *testing.T) {
@@ -161,11 +166,7 @@ func TestAwsUpload(t *testing.T) {
 	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusOK, w)
 }
 
 func TestAwsUploadFail(t *testing.T) {
@@ -179,11 +180,7 @@ func TestAwsUploadFail(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusForbidden, w)
 }
 
 func TestTimeSkew(t *testing.T) {
@@ -202,11 +199,7 @@ func TestTimeSkew(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusOK, w)
 }
 
 func TestTimeSkewFailue(t *testing.T) {
@@ -220,11 +213,7 @@ func TestTimeSkewFailue(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusForbidden, w)
 }
 
 func TestMalformedDate(t *testing.T) {
@@ -243,9 +232,5 @@ func TestMalformedDate(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	vg.authenticateRequest(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Authentication didn't return expected status, instead returned %d,"+
-			" with message %q", w.Code, w.Header().Get(errorMessageHeader))
-	}
+	assertStatus(t, http.StatusBadRequest, w)
 }
