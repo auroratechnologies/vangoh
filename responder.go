@@ -37,13 +37,7 @@ const errorMessageHeader = "Hmac-Error-Message"
 Utility function to format and write a response to a request, given an error
 */
 func (r *responder) respond(rw http.ResponseWriter, req *http.Request, vg VanGoH) {
-	rw.Header().Add(algorithmHeader, fmt.Sprintf("%T", vg.algorithm()))
-	rw.Header().Add(errorTitleHeader, r.title)
-	rw.Header().Add(errorMessageHeader, r.message)
-
-	rw.Header().Add("Content-Type", "text/plain")
 	rw.WriteHeader(r.status)
-	fmt.Fprintf(rw, "%s\n---\n%s\n", r.title, r.message)
 }
 
 var missingHeader = &responder{
