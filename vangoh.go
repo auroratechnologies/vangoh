@@ -362,7 +362,7 @@ the provider, the server re-calculates the hash of the request using the secret 
 and compares it to the reported signature from the Authorization header.
 
 If the keys match, the method returns without error.  Otherwise, the method returns
-a non-nill error, and writes an appropriate HTTP response on the provided ResponseWriter.
+a non-nil error, and writes an appropriate HTTP response on the provided ResponseWriter.
 */
 func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) error {
 	// Verify authorization header exists and is not malformed, and separate components.
