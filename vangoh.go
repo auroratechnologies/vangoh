@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/hmac"
+	"fmt"
 	"time"
 	// Need to register the default hash function for constructors to work
 	_ "crypto/sha256"
@@ -109,6 +110,7 @@ type VanGoH struct {
 		and compared to the server time when the request is recieved.  Defaults to 15 minutes
 	*/
 	maxTimeSkew time.Duration
+	debug       bool
 }
 
 /*
@@ -125,6 +127,7 @@ func New() *VanGoH {
 		algorithm:       crypto.SHA256.New,
 		includedHeaders: make(map[string]struct{}),
 		maxTimeSkew:     time.Minute * 15,
+		debug:           false,
 	}
 }
 
@@ -210,6 +213,10 @@ func (vg *VanGoH) SetAlgorithm(algorithm func() hash.Hash) {
 	vg.algorithm = algorithm
 }
 
+func (vg *VanGoH) SetDebug(debug bool) {
+	vg.debug = debug
+}
+
 /*
 IncludeHeader adds a regex to the set of custom headers to be included when calculating
 the HMAC hash for a given request.
@@ -293,17 +300,17 @@ Example integration:
 */
 func (vg *VanGoH) Handler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		/*
-			Hand the request off to be authenticated.  If an error is encountered, err will be
-			non-null, but authenticateRequest will take care of writing the appropriate http
-			response on the ResponseWriter
-		*/
+		// Hand the request off to be authenticated.  If an error is encountered, err will be
+		// non-null, but authenticateRequest will take care of writing the appropriate http
+		// response on the ResponseWriter
 		err := vg.authenticateRequest(w, r)
-
 		if err != nil {
+			if vg.debug {
+				w.Header().Add("Content-Type", "text/plain")
+				fmt.Fprintf(w, "%s", err)
+			}
 			return
 		}
-
 		h.ServeHTTP(w, r)
 	})
 }
@@ -333,7 +340,6 @@ func (vg *VanGoH) ChainedHandler(w http.ResponseWriter, r *http.Request, next ht
 		response on the ResponseWriter.
 	*/
 	err := vg.authenticateRequest(w, r)
-
 	if err == nil && next != nil {
 		next(w, r)
 	}
@@ -362,12 +368,12 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	// Verify authorization header exists and is not malformed, and separate components.
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "missing header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Missing 'Authorization' header")
 	}
 
 	match, err := regexp.Match(AuthRegex, []byte(authHeader))
 	if err != nil || !match {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "malformed header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization header does not match expected format")
 	}
 
 	orgSplit := strings.Split(authHeader, " ")
@@ -378,7 +384,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	actualSignatureB64 := idSplit[1]
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "malformed header")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization signature is not in valid b64 encoding")
 	}
 
 	// Always check for excessive time skew in request.
@@ -386,11 +392,11 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
 		time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "malformed date")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Date header is not a valid format")
 	}
 	diff := time.Now().Sub(date)
 	if diff > vg.maxTimeSkew {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "invalid date")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "Date header's value is too old")
 	}
 
 	// Load the secret key from the appropriate key provider, given the ID from the
@@ -407,21 +413,21 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	provider, exists := vg.keyProviders[providerKey]
 	if !exists {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "invalid organization")
+		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization organization is not recognized")
 	}
 
 	secretKey, err := provider.GetSecretKey([]byte(accessID))
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "key lookup failure")
+		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to look up secret key")
 	}
 	if secretKey == nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "invalid access id")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "Authorization key is not recognized")
 	}
 
 	// Calculate the string to be signed based on the headers and VanGoH configuration.
 	signingString, err := vg.createSigningString(w, r)
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "signing failure")
+		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to create signature")
 	}
 
 	// Conduct our own signing and verify against the signature in the Authorization header.
@@ -430,7 +436,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	expectedSignature := mac.Sum(nil)
 
 	if !hmac.Equal(expectedSignature, actualSignature) {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "mismatched signature")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "HMAC signature does not match")
 	}
 
 	// If we have made it this far, authorization is successful.
@@ -443,8 +449,7 @@ func multiFormatDateParse(formats []string, dateStr string) (time.Time, error) {
 			return date, nil
 		}
 	}
-
-	return time.Now(), errors.New("Date does not match any valid format")
+	return time.Time{}, errors.New("Date does not match any valid format")
 }
 
 /*
@@ -469,7 +474,7 @@ func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (s
 
 	customHeaders, err := vg.createHeadersString(r)
 	if err != nil {
-		return "", errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "signing failure")
+		return "", errors.New("Unable to create headers string")
 	}
 	buffer.WriteString(customHeaders)
 

@@ -9,8 +9,5 @@ import (
 func errorAndSetHTTPStatus(
 	w http.ResponseWriter, req *http.Request, statusCode int, message string) error {
 	w.WriteHeader(statusCode)
-	if message == "" {
-		message = "Authentication Error"
-	}
 	return errors.New(message)
 }
