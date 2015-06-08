@@ -364,6 +364,7 @@ and compares it to the reported signature from the Authorization header.
 If the keys match, the method returns without error.  Otherwise, the method returns
 a non-nil error, and writes an appropriate HTTP response on the provided ResponseWriter.
 */
+
 func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) error {
 	// Verify authorization header exists and is not malformed, and separate components.
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
@@ -436,7 +437,11 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	expectedSignature := mac.Sum(nil)
 
 	if !hmac.Equal(expectedSignature, actualSignature) {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "HMAC signature does not match")
+		return errorAndSetHTTPStatus(w, r, http.StatusForbidden,
+			fmt.Sprintf(
+				"HMAC signature does not match: expected %s, received %s",
+				base64.StdEncoding.EncodeToString(expectedSignature),
+				actualSignatureB64))
 	}
 
 	// If we have made it this far, authorization is successful.
