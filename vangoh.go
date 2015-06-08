@@ -20,7 +20,7 @@ import (
 /*
 SecretKeyProvider is an interface that describes a source of retrieving secret keys,
 given a unique identifier.  It defines one method, GetSecretKey, which, given an identifier
-of type byte[], will return the corresponding secret key.
+of type []byte, will return the corresponding secret key.
 
 A naïve implementation may be to reference an in-memory map, but it is also trivial
 to implement a KeyProvider via a database connection.
