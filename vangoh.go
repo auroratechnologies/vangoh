@@ -61,7 +61,7 @@ and equals sign "=" as padding on the end if needed.)
 
 Any leading or trailing whitespace around the header will be trimmed before validation.
 */
-const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_]+:" +
+const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_/+]+:" +
 	"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
 
 /*
