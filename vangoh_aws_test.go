@@ -24,19 +24,13 @@ var awsExampleProvider = &testProvider{
 	secretKey:  []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 }
 
-func constructTestHMACb64(
-	t *testing.T,
-	provider *testProvider,
-	vg *VanGoH,
-	r *http.Request,
-	w *httptest.ResponseRecorder,
-) string {
-	signingString, err := vg.createSigningString(w, r)
+func constructTestHMACb64(t *testing.T, vg *VanGoH, r *http.Request, secret []byte) string {
+	signingString, err := vg.createSigningString(r)
 	if err != nil {
 		t.Errorf("constructTestHeader: unable to create signature.")
 		t.FailNow()
 	}
-	mac := hmac.New(vg.algorithm, provider.secretKey)
+	mac := hmac.New(vg.algorithm, secret)
 	mac.Write([]byte(signingString))
 	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 	return signature
@@ -47,14 +41,8 @@ func addDateHeader(r *http.Request) {
 	r.Header.Set("Date", datestr)
 }
 
-func addAuthorizationHeader(
-	t *testing.T,
-	provider *testProvider,
-	vg *VanGoH,
-	r *http.Request,
-	w *httptest.ResponseRecorder,
-) {
-	signature := constructTestHMACb64(t, provider, vg, r, w)
+func addAuthorizationHeader(t *testing.T, vg *VanGoH, r *http.Request, secret []byte) {
+	signature := constructTestHMACb64(t, vg, r, secret)
 	r.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+signature)
 }
 
@@ -75,7 +63,7 @@ func TestGetSucceedsWithCorrectSignature(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	addDateHeader(req)
-	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
+	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
 	vg.authenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)
@@ -89,7 +77,7 @@ func TestGetFailsWithIncorrectSignature(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	addDateHeader(req)
-	validSignature := constructTestHMACb64(t, awsExampleProvider, vg, req, w)
+	validSignature := constructTestHMACb64(t, vg, req, awsExampleProvider.secretKey)
 	invalidSignature := "aaaa" + validSignature
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
 
@@ -106,7 +94,7 @@ func TestGetFailsWithSkewedTime(t *testing.T) {
 
 	skewedDateStr := (time.Now().Add(-1 * vg.maxTimeSkew)).UTC().Format(time.RFC1123Z)
 	req.Header.Set("Date", skewedDateStr)
-	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
+	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
 	vg.authenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
@@ -121,7 +109,7 @@ func TestAwsPut(t *testing.T) {
 	req.Header.Set("Content-Type", "image/jpeg")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:MyyxeRY7whkBe+bq8fHCL/2kKUg=")
 	w := httptest.NewRecorder()
-	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
+	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
 	vg.authenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)
@@ -163,7 +151,7 @@ func TestAwsUpload(t *testing.T) {
 	req.Header.Set("Content-Length", "5913339")
 
 	w := httptest.NewRecorder()
-	addAuthorizationHeader(t, awsExampleProvider, vg, req, w)
+	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
 	vg.authenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)

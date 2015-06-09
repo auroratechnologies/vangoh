@@ -426,7 +426,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 	}
 
 	// Calculate the string to be signed based on the headers and VanGoH configuration.
-	signingString, err := vg.createSigningString(w, r)
+	signingString, err := vg.createSigningString(r)
 	if err != nil {
 		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to create signature")
 	}
@@ -462,7 +462,7 @@ createSigningString creates the string used for signature generation, in accorda
 the specifications as laid out in the package documentation. Refer there for more detail,
 or to the Amazon Signature V2 documentation: http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html.
 */
-func (vg *VanGoH) createSigningString(w http.ResponseWriter, r *http.Request) (string, error) {
+func (vg *VanGoH) createSigningString(r *http.Request) (string, error) {
 	var buffer bytes.Buffer
 
 	buffer.WriteString(r.Method)
