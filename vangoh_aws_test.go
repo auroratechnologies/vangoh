@@ -25,7 +25,7 @@ var awsExampleProvider = &testProvider{
 }
 
 func constructTestHMACb64(t *testing.T, vg *VanGoH, r *http.Request, secret []byte) string {
-	signingString, err := vg.createSigningString(r)
+	signingString, err := vg.CreateSigningString(r)
 	if err != nil {
 		t.Errorf("constructTestHeader: unable to create signature.")
 		t.FailNow()
