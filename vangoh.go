@@ -282,70 +282,7 @@ func (vg *Vangoh) SetMaxTimeSkew(timeSkew time.Duration) {
 }
 
 /*
-Handler returns an implementation of the http.HandlerFunc type for integration
-with the net/http library.
-
-Example integration:
-	func main() {
-		// Creating our new Vangoh instance
-		vg := vangoh.New()
-
-		// Additional configuration and creation of the base handler
-
-		// Route the handler through Vangoh, and ListenAndServer as usual
-		app := vg.Handler(baseHandler)
-		http.ListenAndServe("0.0.0.0:3000", app)
-	}
-*/
-func (vg *Vangoh) Handler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Hand the request off to be authenticated.  If an error is encountered, err will be
-		// non-null, but authenticateRequest will take care of writing the appropriate http
-		// response on the ResponseWriter
-		err := vg.authenticateRequest(w, r)
-		if err != nil {
-			if vg.debug {
-				w.Header().Add("Content-Type", "text/plain")
-				fmt.Fprintf(w, "%s", err)
-			}
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
-/*
-ChainedHandler is an implementation designed to integrate with Negroni, but may be
-used in anything requiring the chainable signature.
-
-Example use with Negroni:
-	func main() {
-
-		mux := http.NewServeMux()
-
-		// Creating our new Vangoh instance
-		vg := vangoh.NewSingleProvider(keyProvider)
-
-		n := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.HandlerFunc(vg.ChainedHandler))
-		n.UseHandler(mux)
-
-		n.Run(":3000")
-	}
-*/
-func (vg *Vangoh) ChainedHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-	/*
-		Hand the request off to be authenticated.  If an error is encountered, err will be
-		non-null, but authenticateRequest will take care of writing the appropriate http
-		response on the ResponseWriter.
-	*/
-	err := vg.authenticateRequest(w, r)
-	if err == nil && next != nil {
-		next(w, r)
-	}
-}
-
-/*
-authenticateRequest is the method where the validation work takes place.
+AuthenticateRequest is the method where the validation work takes place.
 
 Given a request, it first validates that there is an Authorization header present,
 and that it fits the required format.  It then makes a call to load the secret key
@@ -364,7 +301,7 @@ If the keys match, the method returns without error.  Otherwise, the method retu
 a non-nil error, and writes an appropriate HTTP response on the provided ResponseWriter.
 */
 
-func (vg *Vangoh) authenticateRequest(w http.ResponseWriter, r *http.Request) error {
+func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) error {
 	// Verify authorization header exists and is not malformed, and separate components.
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {

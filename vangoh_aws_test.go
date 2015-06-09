@@ -65,7 +65,7 @@ func TestGetSucceedsWithCorrectSignature(t *testing.T) {
 	addDateHeader(req)
 	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)
 }
 
@@ -81,7 +81,7 @@ func TestGetFailsWithIncorrectSignature(t *testing.T) {
 	invalidSignature := "aaaa" + validSignature
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
 }
 
@@ -96,7 +96,7 @@ func TestGetFailsWithSkewedTime(t *testing.T) {
 	req.Header.Set("Date", skewedDateStr)
 	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
 }
 
@@ -111,7 +111,7 @@ func TestAwsPut(t *testing.T) {
 	w := httptest.NewRecorder()
 	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)
 }
 
@@ -125,7 +125,7 @@ func TestAwsPutFail(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:NyyxeRY7whkBe+bq8fHCL/2kKUg=")
 	w := httptest.NewRecorder()
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
 }
 
@@ -153,7 +153,7 @@ func TestAwsUpload(t *testing.T) {
 	w := httptest.NewRecorder()
 	addAuthorizationHeader(t, vg, req, awsExampleProvider.secretKey)
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)
 }
 
@@ -167,7 +167,7 @@ func TestAwsUploadFail(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:NyyxeRY7whkBe+bq8fHCL/2kKUg=")
 	w := httptest.NewRecorder()
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
 }
 
@@ -186,7 +186,7 @@ func TestTimeSkew(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
 	w := httptest.NewRecorder()
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusOK, w)
 }
 
@@ -200,7 +200,7 @@ func TestTimeSkewFailue(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
 	w := httptest.NewRecorder()
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusForbidden, w)
 }
 
@@ -219,6 +219,6 @@ func TestMalformedDate(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
 	w := httptest.NewRecorder()
 
-	vg.authenticateRequest(w, req)
+	vg.AuthenticateRequest(w, req)
 	assertStatus(t, http.StatusBadRequest, w)
 }
