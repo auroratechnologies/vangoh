@@ -78,7 +78,7 @@ func TestAddProvider(t *testing.T) {
 	vg := New()
 
 	if len(vg.keyProviders) != 0 {
-		t.Error("Wrong number of key providers in the VanGoH instance")
+		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
 	err := vg.AddProvider("test", tp1)
@@ -87,7 +87,7 @@ func TestAddProvider(t *testing.T) {
 	}
 
 	if len(vg.keyProviders) != 1 {
-		t.Error("Wrong number of key providers in the VanGoH instance")
+		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
 	err = vg.AddProvider("test", tp2)
@@ -96,7 +96,7 @@ func TestAddProvider(t *testing.T) {
 	}
 
 	if len(vg.keyProviders) != 1 {
-		t.Error("Wrong number of key providers in the VanGoH instance")
+		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
 	err = vg.AddProvider("notTest", tp2)
@@ -105,13 +105,13 @@ func TestAddProvider(t *testing.T) {
 	}
 
 	if len(vg.keyProviders) != 2 {
-		t.Error("Wrong number of key providers in the VanGoH instance")
+		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
 	spvg := NewSingleProvider(tp1)
 
 	if len(spvg.keyProviders) != 1 {
-		t.Error("Wrong number of key providers in the VanGoH instance")
+		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
 	err = spvg.AddProvider("test", tp2)
@@ -120,7 +120,7 @@ func TestAddProvider(t *testing.T) {
 	}
 
 	if len(spvg.keyProviders) != 1 {
-		t.Error("Wrong number of key providers in the VanGoH instance")
+		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 }
 
@@ -137,7 +137,7 @@ func TestAlgorithm(t *testing.T) {
 	}
 }
 
-func checkAlgorithm(vg *VanGoH, algo func() hash.Hash) bool {
+func checkAlgorithm(vg *Vangoh, algo func() hash.Hash) bool {
 	vga := fmt.Sprintf("%T", vg.algorithm())
 	toCheck := fmt.Sprintf("%T", algo())
 

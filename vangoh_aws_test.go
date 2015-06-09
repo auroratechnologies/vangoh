@@ -1,7 +1,7 @@
 package vangoh
 
 /*
-Set of tests for VanGoH checking against the examples provided on the AWS "Signing
+Set of tests for Vangoh checking against the examples provided on the AWS "Signing
 and Authenticating REST Requests" page - http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html
 */
 
@@ -24,7 +24,7 @@ var awsExampleProvider = &testProvider{
 	secretKey:  []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 }
 
-func constructTestHMACb64(t *testing.T, vg *VanGoH, r *http.Request, secret []byte) string {
+func constructTestHMACb64(t *testing.T, vg *Vangoh, r *http.Request, secret []byte) string {
 	signingString, err := vg.CreateSigningString(r)
 	if err != nil {
 		t.Errorf("constructTestHeader: unable to create signature.")
@@ -41,7 +41,7 @@ func addDateHeader(r *http.Request) {
 	r.Header.Set("Date", datestr)
 }
 
-func addAuthorizationHeader(t *testing.T, vg *VanGoH, r *http.Request, secret []byte) {
+func addAuthorizationHeader(t *testing.T, vg *Vangoh, r *http.Request, secret []byte) {
 	signature := constructTestHMACb64(t, vg, r, secret)
 	r.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+signature)
 }

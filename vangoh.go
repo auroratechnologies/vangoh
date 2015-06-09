@@ -4,17 +4,16 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/hmac"
-	"fmt"
-	"time"
-	// Need to register the default hash function for constructors to work
 	_ "crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"hash"
 	"net/http"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 /*
@@ -27,11 +26,11 @@ to implement a KeyProvider via a database connection.
 
 Errors returned are to be returned from GetSecretKey only in the event that an actual
 error is encountered by the provider (I/O error, timeout, etc.).  In this case,
-VanGoH will respond to the request with an HTTP code 500 - Internal Server Error.
+Vangoh will respond to the request with an HTTP code 500 - Internal Server Error.
 
 If the identifier cannot be found by the key provider, expected behavior is to
-return nil, nil.  This indicates to VanGoH that the identifier lookup failed, and
-VanGoH will respond to the request with an HTTP code 403 error - Forbidden.
+return nil, nil.  This indicates to Vangoh that the identifier lookup failed, and
+Vangoh will respond to the request with an HTTP code 403 error - Forbidden.
 */
 type SecretKeyProvider interface {
 	GetSecretKey(identifier []byte) ([]byte, error)
@@ -70,12 +69,12 @@ Newline character, definited in unicode, to avoid platform dependence.
 const newline = "\u000A"
 
 /*
-VanGoH is an object that forms the primary point of configuration of the middleware
+Vangoh is an object that forms the primary point of configuration of the middleware
 HMAC handler.  It allows for the configuration of the hashing function to use, the
 headers (specified as regexes) to be included in the computed signature, and the
 mapping between organization tags and the secret key providers associated with them.
 */
-type VanGoH struct {
+type Vangoh struct {
 	/*
 		singleProvider indicates if there is one global provider for this HMAC checker.
 		If so it can more efficiently skip checking which provider is appropriate for
@@ -114,14 +113,14 @@ type VanGoH struct {
 }
 
 /*
-New creates a new VanGoH instance, defaulting to SHA256 hashing and with no included
+New creates a new Vangoh instance, defaulting to SHA256 hashing and with no included
 headers or keyProviders.
 
-They can be added with VanGoH.AddProvider(org string, skp SecretKeyProvider) and
-VanGoH.IncludeHeader(headerRegex string) respectively
+They can be added with Vangoh.AddProvider(org string, skp SecretKeyProvider) and
+Vangoh.IncludeHeader(headerRegex string) respectively
 */
-func New() *VanGoH {
-	return &VanGoH{
+func New() *Vangoh {
+	return &Vangoh{
 		singleProvider:  false,
 		keyProviders:    make(map[string]SecretKeyProvider),
 		algorithm:       crypto.SHA256.New,
@@ -132,15 +131,15 @@ func New() *VanGoH {
 }
 
 /*
-NewSingleProvider creates a new VanGoH instance that supports a single
+NewSingleProvider creates a new Vangoh instance that supports a single
 SecretKeyProvider, defaulting to SHA256 hashing and with no included headers.
 
-Headers can be added with VanGoH.IncludeHeader(headerRegex string)
+Headers can be added with Vangoh.IncludeHeader(headerRegex string)
 
-A VanGoH instance created for a single provider will error if an attempt to add
+A Vangoh instance created for a single provider will error if an attempt to add
 additional providers is made.
 */
-func NewSingleProvider(provider SecretKeyProvider) *VanGoH {
+func NewSingleProvider(provider SecretKeyProvider) *Vangoh {
 	vg := New()
 	vg.singleProvider = true
 	vg.keyProviders["*"] = provider
@@ -150,7 +149,7 @@ func NewSingleProvider(provider SecretKeyProvider) *VanGoH {
 /*
 AddProvider adds a new SecretKeyProvider, which the org tag maps to.
 
-Will error if the VanGoH instance was created for a single provider (using the
+Will error if the Vangoh instance was created for a single provider (using the
 NewSingleProvider constructor), or if the org tag already has an identity provider
 associated with it.
 
@@ -161,16 +160,16 @@ you could create a different provider for each, as demonstrated below.
 
 Example:
 	func main() {
-		// Provider for internal services credentials (not included with VanGoH)
+		// Provider for internal services credentials (not included with Vangoh)
 		internalProvider := providers.NewInMemoryProvider(...)
-		// Provider for normal user credentials (not included with VanGoH)
+		// Provider for normal user credentials (not included with Vangoh)
 		userProvider := providers.NewDatabaseProvider(...)
 
 		vg := vangoh.New()
 		_ = vg.AddProvider("INT", internalProvider)
 		_ = vg.AddProvider("API", userProvider)
 
-		// Add VanGoH into your web stack
+		// Add Vangoh into your web stack
 	}
 
 In this example, any connections made with the authorization header "INT [userID]:[signature]"
@@ -178,7 +177,7 @@ will be authenticated using the internal provider, and connections with the head
 "API [userID]:[signature]" will be authenticated against the user provider, which
 may be much more scalable, but less performant than the internal provider.
 */
-func (vg *VanGoH) AddProvider(org string, skp SecretKeyProvider) error {
+func (vg *Vangoh) AddProvider(org string, skp SecretKeyProvider) error {
 	if vg.singleProvider {
 		return errors.New("cannot add a provider when created for a single provider")
 	}
@@ -190,7 +189,7 @@ func (vg *VanGoH) AddProvider(org string, skp SecretKeyProvider) error {
 }
 
 /*
-SetAlgorithm sets the hashing algorithm to use for this VanGoH instance.
+SetAlgorithm sets the hashing algorithm to use for this Vangoh instance.
 
 It takes as a parameter a function that returns type hash.Hash.  This is usually
 the "New" method for a given hashing implementation (ie. crypto.SHA1.New)
@@ -209,11 +208,11 @@ This is because in the hash init blocks, the hashes are registered with the cryp
 package, and the init blocks are only run when the hash implementations are directly
 imported.
 */
-func (vg *VanGoH) SetAlgorithm(algorithm func() hash.Hash) {
+func (vg *Vangoh) SetAlgorithm(algorithm func() hash.Hash) {
 	vg.algorithm = algorithm
 }
 
-func (vg *VanGoH) SetDebug(debug bool) {
+func (vg *Vangoh) SetDebug(debug bool) {
 	vg.debug = debug
 }
 
@@ -235,7 +234,7 @@ If no custom headers are included, the signature will be derived from just the H
 Content-Type, Content-MD5, and canonical path.
 
 */
-func (vg *VanGoH) IncludeHeader(headerRegex string) error {
+func (vg *Vangoh) IncludeHeader(headerRegex string) error {
 	var buf bytes.Buffer
 	if !strings.HasPrefix(headerRegex, "^") {
 		buf.WriteString("^")
@@ -260,16 +259,16 @@ func (vg *VanGoH) IncludeHeader(headerRegex string) error {
 /*
 SetMaxTimeSkew sets the maximum allowable duration between the date and time specified
 in the Date header and the server time when the response is processed.  If the date in
-the header exceeds the duration VanGoH will respond to the request with a 403 forbidden
+the header exceeds the duration Vangoh will respond to the request with a 403 forbidden
 error.
 
 For example, to match the behavior of AWS, which has a 15 minute allowable time skew
-window, you could configure your VanGoH instance like this:
+window, you could configure your Vangoh instance like this:
 
 	vg := vangoh.New()
 	vg.SetMaxTimeSkew(time.Minute * 15)
 
-When checking the date header, VanGoH follows the precedent of RFC 2616, accepting dates
+When checking the date header, Vangoh follows the precedent of RFC 2616, accepting dates
 in any of the following formats:
 	ANSIC       = "Mon Jan _2 15:04:05 2006"
 	RFC822      = "02 Jan 06 15:04 MST"
@@ -278,7 +277,7 @@ in any of the following formats:
 	RFC1123     = "Mon, 02 Jan 2006 15:04:05 MST"
 	RFC1123Z    = "Mon, 02 Jan 2006 15:04:05 -0700"
 */
-func (vg *VanGoH) SetMaxTimeSkew(timeSkew time.Duration) {
+func (vg *Vangoh) SetMaxTimeSkew(timeSkew time.Duration) {
 	vg.maxTimeSkew = timeSkew
 }
 
@@ -288,17 +287,17 @@ with the net/http library.
 
 Example integration:
 	func main() {
-		// Creating our new VanGoH instance
+		// Creating our new Vangoh instance
 		vg := vangoh.New()
 
 		// Additional configuration and creation of the base handler
 
-		// Route the handler through VanGoH, and ListenAndServer as usual
+		// Route the handler through Vangoh, and ListenAndServer as usual
 		app := vg.Handler(baseHandler)
 		http.ListenAndServe("0.0.0.0:3000", app)
 	}
 */
-func (vg *VanGoH) Handler(h http.Handler) http.Handler {
+func (vg *Vangoh) Handler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Hand the request off to be authenticated.  If an error is encountered, err will be
 		// non-null, but authenticateRequest will take care of writing the appropriate http
@@ -324,7 +323,7 @@ Example use with Negroni:
 
 		mux := http.NewServeMux()
 
-		// Creating our new VanGoH instance
+		// Creating our new Vangoh instance
 		vg := vangoh.NewSingleProvider(keyProvider)
 
 		n := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.HandlerFunc(vg.ChainedHandler))
@@ -333,7 +332,7 @@ Example use with Negroni:
 		n.Run(":3000")
 	}
 */
-func (vg *VanGoH) ChainedHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+func (vg *Vangoh) ChainedHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	/*
 		Hand the request off to be authenticated.  If an error is encountered, err will be
 		non-null, but authenticateRequest will take care of writing the appropriate http
@@ -354,7 +353,7 @@ from the appropriate key provider, and proceeds to construct the string used in 
 
 If multiple Authorization headers exist, it uses the first only.
 
-The signing string uses the configurations in the VanGoH instance to choose and format
+The signing string uses the configurations in the Vangoh instance to choose and format
 the canonical headers, canonical path, date, content type, content md5, and http-verb.
 
 Once the signing string formatting is completed and the secret key is retrieved from
@@ -365,7 +364,7 @@ If the keys match, the method returns without error.  Otherwise, the method retu
 a non-nil error, and writes an appropriate HTTP response on the provided ResponseWriter.
 */
 
-func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) error {
+func (vg *Vangoh) authenticateRequest(w http.ResponseWriter, r *http.Request) error {
 	// Verify authorization header exists and is not malformed, and separate components.
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
@@ -425,7 +424,7 @@ func (vg *VanGoH) authenticateRequest(w http.ResponseWriter, r *http.Request) er
 		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "Authorization key is not recognized")
 	}
 
-	// Calculate the string to be signed based on the headers and VanGoH configuration.
+	// Calculate the string to be signed based on the headers and Vangoh configuration.
 	signingString, err := vg.CreateSigningString(r)
 	if err != nil {
 		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to create signature")
@@ -462,7 +461,7 @@ CreateSigningString creates the string used for signature generation, in accorda
 the specifications as laid out in the package documentation. Refer there for more detail,
 or to the Amazon Signature V2 documentation: http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html.
 */
-func (vg *VanGoH) CreateSigningString(r *http.Request) (string, error) {
+func (vg *Vangoh) CreateSigningString(r *http.Request) (string, error) {
 	var buffer bytes.Buffer
 
 	buffer.WriteString(r.Method)
@@ -490,12 +489,12 @@ func (vg *VanGoH) CreateSigningString(r *http.Request) (string, error) {
 
 /*
 createHeadersString is used to create the canonicalized header string, using the
-custom headers as configured in the VanGoH object.
+custom headers as configured in the Vangoh object.
 
 More detail on the methodology used in formatting the headers sting can be found
 in the package documentation.
 */
-func (vg *VanGoH) createHeadersString(r *http.Request) (string, error) {
+func (vg *Vangoh) createHeadersString(r *http.Request) (string, error) {
 	// return fast if no header regexes are defined
 	if len(vg.includedHeaders) == 0 {
 		return "", nil
