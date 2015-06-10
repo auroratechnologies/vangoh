@@ -6,8 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"net/http"
 	"testing"
+	"unsafe"
 )
+
+type Foo struct {
+	Value string
+}
 
 type testProvider struct {
 	promptErr bool
@@ -23,6 +29,26 @@ func (tp *testProvider) GetSecret(key []byte) ([]byte, error) {
 		return nil, nil
 	}
 	return tp.secret, nil
+}
+
+type testCallbackProvider testProvider
+
+func (tcp *testCallbackProvider) GetSecret(key []byte, voidPtr *unsafe.Pointer) ([]byte, error) {
+	if tcp.promptErr {
+		return nil, errors.New("testing error")
+	}
+	if !bytes.Equal(tcp.key, key) {
+		return nil, nil
+	}
+	foo := &Foo{Value: "Hello!"}
+	*voidPtr = unsafe.Pointer(foo)
+	return tcp.secret, nil
+}
+
+func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, voidPtr *unsafe.Pointer) {
+	fooPtr := (*Foo)(*voidPtr)
+	foo := *fooPtr
+	fmt.Printf("Value: %s\n", foo.Value)
 }
 
 var tp1 = &testProvider{

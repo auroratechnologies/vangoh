@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var awsExampleProvider = &testProvider{
+var awsExampleProvider = &testCallbackProvider{
 	promptErr: false,
 	key:       []byte("AKIAIOSFODNN7EXAMPLE"),
 	secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),

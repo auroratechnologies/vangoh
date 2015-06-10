@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 /*
@@ -66,7 +67,7 @@ type Vangoh struct {
 		keyProviders is a map between org tags, as used in the Authentication section,
 		with the SecretProvider that provides the identities for that org.
 	*/
-	keyProviders map[string]SecretProvider
+	keyProviders map[string]secretProvider
 
 	/*
 		algorithm represents the hashing function to be used when computing the HMAC hashes.
@@ -96,13 +97,13 @@ type Vangoh struct {
 New creates a new Vangoh instance, defaulting to SHA256 hashing and with no included
 headers or keyProviders.
 
-They can be added with Vangoh.AddProvider(org string, skp SecretProvider) and
+They can be added with Vangoh.AddProvider(org string, skp secretProvider) and
 Vangoh.IncludeHeader(headerRegex string) respectively
 */
 func New() *Vangoh {
 	return &Vangoh{
 		singleProvider:  false,
-		keyProviders:    make(map[string]SecretProvider),
+		keyProviders:    make(map[string]secretProvider),
 		algorithm:       crypto.SHA256.New,
 		includedHeaders: make(map[string]struct{}),
 		maxTimeSkew:     time.Minute * 15,
@@ -112,14 +113,14 @@ func New() *Vangoh {
 
 /*
 NewSingleProvider creates a new Vangoh instance that supports a single
-SecretProvider, defaulting to SHA256 hashing and with no included headers.
+secretProvider, defaulting to SHA256 hashing and with no included headers.
 
 Headers can be added with Vangoh.IncludeHeader(headerRegex string)
 
 A Vangoh instance created for a single provider will error if an attempt to add
 additional providers is made.
 */
-func NewSingleProvider(provider SecretProvider) *Vangoh {
+func NewSingleProvider(provider secretProvider) *Vangoh {
 	vg := New()
 	vg.singleProvider = true
 	vg.keyProviders["*"] = provider
@@ -127,7 +128,7 @@ func NewSingleProvider(provider SecretProvider) *Vangoh {
 }
 
 /*
-AddProvider adds a new SecretProvider, which the org tag maps to.
+AddProvider adds a new secretProvider, which the org tag maps to.
 
 Will error if the Vangoh instance was created for a single provider (using the
 NewSingleProvider constructor), or if the org tag already has an identity provider
@@ -157,7 +158,7 @@ will be authenticated using the internal provider, and connections with the head
 "API [userID]:[signature]" will be authenticated against the user provider, which
 may be much more scalable, but less performant than the internal provider.
 */
-func (vg *Vangoh) AddProvider(org string, skp SecretProvider) error {
+func (vg *Vangoh) AddProvider(org string, skp secretProvider) error {
 	if vg.singleProvider {
 		return errors.New("cannot add a provider when created for a single provider")
 	}
@@ -348,11 +349,21 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	if !exists {
 		return &AuthenticationError{
 			c: http.StatusBadRequest,
-			s: "Authorization organization is not recognized",
+			s: "Authentication organization is not recognized",
 		}
 	}
 
-	secretKey, err := provider.GetSecret([]byte(accessID))
+	var voidPtr unsafe.Pointer = nil
+	var secretKey []byte
+	byteID := []byte(accessID)
+
+	switch provider := provider.(type) {
+	case SecretProviderWithCallback:
+		secretKey, err = provider.GetSecret(byteID, &voidPtr)
+	case SecretProvider:
+		secretKey, err = provider.GetSecret(byteID)
+	}
+
 	if err != nil {
 		return &AuthenticationError{
 			c: http.StatusInternalServerError,
@@ -362,7 +373,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	if secretKey == nil {
 		return &AuthenticationError{
 			c: http.StatusForbidden,
-			s: "Authorization key is not recognized",
+			s: "Authentication key is not recognized",
 		}
 	}
 
@@ -379,7 +390,15 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 		}
 	}
 
-	// If we have made it this far, authorization is successful.
+	switch provider := provider.(type) {
+	case SecretProviderWithCallback:
+		if voidPtr != nil {
+			provider.SuccessCallback(r, &voidPtr)
+		} else {
+			provider.SuccessCallback(r, nil)
+		}
+	}
+	// If we have made it this far, authentication is successful.
 	return nil
 }
 
