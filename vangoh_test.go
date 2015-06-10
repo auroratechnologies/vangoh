@@ -10,37 +10,37 @@ import (
 )
 
 type testProvider struct {
-	promptErr  bool
-	identifier []byte
-	secretKey  []byte
+	promptErr bool
+	key       []byte
+	secret    []byte
 }
 
-func (tp *testProvider) GetSecretKey(identifier []byte) ([]byte, error) {
+func (tp *testProvider) GetSecret(key []byte) ([]byte, error) {
 	if tp.promptErr {
 		return nil, errors.New("testing error")
 	}
-	if !bytes.Equal(tp.identifier, identifier) {
+	if !bytes.Equal(tp.key, key) {
 		return nil, nil
 	}
-	return tp.secretKey, nil
+	return tp.secret, nil
 }
 
 var tp1 = &testProvider{
-	promptErr:  false,
-	identifier: []byte("testIDOne"),
-	secretKey:  []byte("secretKeyOne"),
+	promptErr: false,
+	key:       []byte("testIDOne"),
+	secret:    []byte("secretOne"),
 }
 
 var tp2 = &testProvider{
-	promptErr:  false,
-	identifier: []byte("testIDTwo"),
-	secretKey:  []byte("secretKeyTwo"),
+	promptErr: false,
+	key:       []byte("testIDTwo"),
+	secret:    []byte("secretTwo"),
 }
 
 var tpErr = &testProvider{
-	promptErr:  true,
-	identifier: []byte("testIDErr"),
-	secretKey:  []byte("secretKeyErr"),
+	promptErr: true,
+	key:       []byte("testIDErr"),
+	secret:    []byte("secretErr"),
 }
 
 func TestNew(t *testing.T) {

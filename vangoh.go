@@ -17,26 +17,6 @@ import (
 )
 
 /*
-SecretKeyProvider is an interface that describes a source of retrieving secret keys,
-given a unique identifier.  It defines one method, GetSecretKey, which, given an identifier
-of type []byte, will return the corresponding secret key.
-
-A naïve implementation may be to reference an in-memory map, but it is also trivial
-to implement a KeyProvider via a database connection.
-
-Errors returned are to be returned from GetSecretKey only in the event that an actual
-error is encountered by the provider (I/O error, timeout, etc.).  In this case,
-Vangoh will respond to the request with an HTTP code 500 - Internal Server Error.
-
-If the identifier cannot be found by the key provider, expected behavior is to
-return nil, nil.  This indicates to Vangoh that the identifier lookup failed, and
-Vangoh will respond to the request with an HTTP code 403 error - Forbidden.
-*/
-type SecretKeyProvider interface {
-	GetSecretKey(identifier []byte) ([]byte, error)
-}
-
-/*
 Name of the header carrying Organization, Access ID, and HMAC Signature information.
 */
 const HMACHeader = "Authorization"
@@ -84,9 +64,9 @@ type Vangoh struct {
 
 	/*
 		keyProviders is a map between org tags, as used in the Authentication section,
-		with the SecretKeyProvider that provides the identities for that org.
+		with the SecretProvider that provides the identities for that org.
 	*/
-	keyProviders map[string]SecretKeyProvider
+	keyProviders map[string]SecretProvider
 
 	/*
 		algorithm represents the hashing function to be used when computing the HMAC hashes.
@@ -116,13 +96,13 @@ type Vangoh struct {
 New creates a new Vangoh instance, defaulting to SHA256 hashing and with no included
 headers or keyProviders.
 
-They can be added with Vangoh.AddProvider(org string, skp SecretKeyProvider) and
+They can be added with Vangoh.AddProvider(org string, skp SecretProvider) and
 Vangoh.IncludeHeader(headerRegex string) respectively
 */
 func New() *Vangoh {
 	return &Vangoh{
 		singleProvider:  false,
-		keyProviders:    make(map[string]SecretKeyProvider),
+		keyProviders:    make(map[string]SecretProvider),
 		algorithm:       crypto.SHA256.New,
 		includedHeaders: make(map[string]struct{}),
 		maxTimeSkew:     time.Minute * 15,
@@ -132,14 +112,14 @@ func New() *Vangoh {
 
 /*
 NewSingleProvider creates a new Vangoh instance that supports a single
-SecretKeyProvider, defaulting to SHA256 hashing and with no included headers.
+SecretProvider, defaulting to SHA256 hashing and with no included headers.
 
 Headers can be added with Vangoh.IncludeHeader(headerRegex string)
 
 A Vangoh instance created for a single provider will error if an attempt to add
 additional providers is made.
 */
-func NewSingleProvider(provider SecretKeyProvider) *Vangoh {
+func NewSingleProvider(provider SecretProvider) *Vangoh {
 	vg := New()
 	vg.singleProvider = true
 	vg.keyProviders["*"] = provider
@@ -147,7 +127,7 @@ func NewSingleProvider(provider SecretKeyProvider) *Vangoh {
 }
 
 /*
-AddProvider adds a new SecretKeyProvider, which the org tag maps to.
+AddProvider adds a new SecretProvider, which the org tag maps to.
 
 Will error if the Vangoh instance was created for a single provider (using the
 NewSingleProvider constructor), or if the org tag already has an identity provider
@@ -177,7 +157,7 @@ will be authenticated using the internal provider, and connections with the head
 "API [userID]:[signature]" will be authenticated against the user provider, which
 may be much more scalable, but less performant than the internal provider.
 */
-func (vg *Vangoh) AddProvider(org string, skp SecretKeyProvider) error {
+func (vg *Vangoh) AddProvider(org string, skp SecretProvider) error {
 	if vg.singleProvider {
 		return errors.New("cannot add a provider when created for a single provider")
 	}
@@ -318,6 +298,7 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	idSplit := strings.Split(orgSplit[1], ":")
 	accessID := idSplit[0]
+	// TODO(peter): instead of decoding b64, just encode known signature and compare b64 strings.
 	actualSignatureB64 := idSplit[1]
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
@@ -353,7 +334,7 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization organization is not recognized")
 	}
 
-	secretKey, err := provider.GetSecretKey([]byte(accessID))
+	secretKey, err := provider.GetSecret([]byte(accessID))
 	if err != nil {
 		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to look up secret key")
 	}
@@ -362,15 +343,7 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 	}
 
 	// Calculate the string to be signed based on the headers and Vangoh configuration.
-	signingString, err := vg.CreateSigningString(r)
-	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to create signature")
-	}
-
-	// Conduct our own signing and verify against the signature in the Authorization header.
-	mac := hmac.New(vg.algorithm, secretKey)
-	mac.Write([]byte(signingString))
-	expectedSignature := mac.Sum(nil)
+	expectedSignature := vg.ConstructSignature(r, secretKey)
 
 	if !hmac.Equal(expectedSignature, actualSignature) {
 		return errorAndSetHTTPStatus(w, r, http.StatusForbidden,
@@ -382,6 +355,13 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	// If we have made it this far, authorization is successful.
 	return nil
+}
+
+func (vg *Vangoh) ConstructSignature(r *http.Request, secret []byte) []byte {
+	signingString := vg.CreateSigningString(r)
+	mac := hmac.New(vg.algorithm, secret)
+	mac.Write([]byte(signingString))
+	return mac.Sum(nil)
 }
 
 func multiFormatDateParse(formats []string, dateStr string) (time.Time, error) {
@@ -398,7 +378,7 @@ CreateSigningString creates the string used for signature generation, in accorda
 the specifications as laid out in the package documentation. Refer there for more detail,
 or to the Amazon Signature V2 documentation: http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html.
 */
-func (vg *Vangoh) CreateSigningString(r *http.Request) (string, error) {
+func (vg *Vangoh) CreateSigningString(r *http.Request) string {
 	var buffer bytes.Buffer
 
 	buffer.WriteString(r.Method)
@@ -413,15 +393,12 @@ func (vg *Vangoh) CreateSigningString(r *http.Request) (string, error) {
 	buffer.WriteString(r.Header.Get("Date"))
 	buffer.WriteString(newline)
 
-	customHeaders, err := vg.createHeadersString(r)
-	if err != nil {
-		return "", errors.New("Unable to create headers string")
-	}
+	customHeaders := vg.createHeadersString(r)
 	buffer.WriteString(customHeaders)
 
 	buffer.WriteString(r.URL.Path)
 
-	return buffer.String(), nil
+	return buffer.String()
 }
 
 /*
@@ -431,10 +408,10 @@ custom headers as configured in the Vangoh object.
 More detail on the methodology used in formatting the headers sting can be found
 in the package documentation.
 */
-func (vg *Vangoh) createHeadersString(r *http.Request) (string, error) {
+func (vg *Vangoh) createHeadersString(r *http.Request) string {
 	// return fast if no header regexes are defined
 	if len(vg.includedHeaders) == 0 {
-		return "", nil
+		return ""
 	}
 
 	// Buffer to write the canonicalized header string into as it's created
@@ -501,5 +478,5 @@ func (vg *Vangoh) createHeadersString(r *http.Request) (string, error) {
 		buffer.WriteString(newline)
 	}
 
-	return buffer.String(), nil
+	return buffer.String()
 }
