@@ -9,7 +9,6 @@ import (
 	"crypto"
 	_ "crypto/SHA1"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -20,11 +19,19 @@ var awsExampleProvider = &testProvider{
 	secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 }
 
-func assertStatus(t *testing.T, status int, w *httptest.ResponseRecorder) {
-	if w.Code != status {
-		t.Errorf(
-			"Authentication didn't return expected status, instead returned %d",
-			w.Code)
+func assertNilError(t *testing.T, a *AuthenticationError) {
+	if a != nil {
+		t.Errorf("Expected no error, instead received HTTP %d: %s", a.StatusCode(), a)
+		t.FailNow()
+	}
+}
+func assertErrorWithStatus(t *testing.T, a *AuthenticationError, status int) {
+	if a == nil {
+		t.Errorf("Expected an error with HTTP Status %d, but received no error", status)
+		t.FailNow()
+	}
+	if a.StatusCode() != status {
+		t.Errorf("Expected an error with status HTTP %d, but received HTTP %d", status, a.StatusCode())
 		t.FailNow()
 	}
 }
@@ -34,13 +41,12 @@ func TestGetSucceedsWithCorrectSignature(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	w := httptest.NewRecorder()
 
 	AddDateHeader(req)
 	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusOK, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
 }
 
 func TestGetFailsWithIncorrectSignature(t *testing.T) {
@@ -48,15 +54,14 @@ func TestGetFailsWithIncorrectSignature(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	w := httptest.NewRecorder()
 
 	AddDateHeader(req)
 	validSignature := vg.ConstructBase64Signature(req, awsExampleProvider.secret)
 	invalidSignature := "aaaa" + validSignature
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusForbidden, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
 func TestGetFailsWithSkewedTime(t *testing.T) {
@@ -64,14 +69,13 @@ func TestGetFailsWithSkewedTime(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	w := httptest.NewRecorder()
 
 	skewedDateStr := (time.Now().Add(-1 * vg.maxTimeSkew)).UTC().Format(time.RFC1123Z)
 	req.Header.Set("Date", skewedDateStr)
 	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusForbidden, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
 func TestAwsPut(t *testing.T) {
@@ -82,11 +86,10 @@ func TestAwsPut(t *testing.T) {
 	AddDateHeader(req)
 	req.Header.Set("Content-Type", "image/jpeg")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:MyyxeRY7whkBe+bq8fHCL/2kKUg=")
-	w := httptest.NewRecorder()
 	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusOK, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
 }
 
 func TestAwsPutFail(t *testing.T) {
@@ -97,10 +100,9 @@ func TestAwsPutFail(t *testing.T) {
 	req.Header.Set("Date", "Tue, 27 Mar 2007 21:15:45 +0000")
 	req.Header.Set("Content-Type", "image/jpeg")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:NyyxeRY7whkBe+bq8fHCL/2kKUg=")
-	w := httptest.NewRecorder()
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusForbidden, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
 func TestAwsUpload(t *testing.T) {
@@ -124,11 +126,10 @@ func TestAwsUpload(t *testing.T) {
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Content-Length", "5913339")
 
-	w := httptest.NewRecorder()
 	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusOK, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
 }
 
 func TestAwsUploadFail(t *testing.T) {
@@ -139,10 +140,9 @@ func TestAwsUploadFail(t *testing.T) {
 	req.Header.Set("Date", "Tue, 27 Mar 2007 21:15:45 +0000")
 	req.Header.Set("Content-Type", "image/jpeg")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:NyyxeRY7whkBe+bq8fHCL/2kKUg=")
-	w := httptest.NewRecorder()
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusForbidden, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
 func TestTimeSkew(t *testing.T) {
@@ -158,10 +158,9 @@ func TestTimeSkew(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
-	w := httptest.NewRecorder()
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusOK, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
 }
 
 func TestTimeSkewFailue(t *testing.T) {
@@ -172,10 +171,9 @@ func TestTimeSkewFailue(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
-	w := httptest.NewRecorder()
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusForbidden, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
 func TestMalformedDate(t *testing.T) {
@@ -191,8 +189,7 @@ func TestMalformedDate(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	req.Header.Set("Date", "2007-03-27T19:36:42Z00:00") // RFC 3339 - not supported
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
-	w := httptest.NewRecorder()
 
-	vg.AuthenticateRequest(w, req)
-	assertStatus(t, http.StatusBadRequest, w)
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusBadRequest)
 }

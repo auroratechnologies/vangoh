@@ -1,6 +1,7 @@
 package vangoh
 
 import (
+	"fmt"
 	"net/http"
 )
 
@@ -15,6 +16,14 @@ func (a *AuthenticationError) Error() string {
 
 func (a *AuthenticationError) StatusCode() int {
 	return a.c
+}
+
+func (a *AuthenticationError) WriteResponse(w http.ResponseWriter, debug bool) {
+	w.WriteHeader(a.StatusCode())
+	if debug {
+		w.Header().Add("Content-Type", "text/plain")
+		fmt.Fprintf(w, "%s", a)
+	}
 }
 
 // Utility function to write an HTTP status code to a request and return an error.

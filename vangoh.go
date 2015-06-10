@@ -281,16 +281,22 @@ If the keys match, the method returns without error.  Otherwise, the method retu
 a non-nil error, and writes an appropriate HTTP response on the provided ResponseWriter.
 */
 
-func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) error {
+func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	// Verify authorization header exists and is not malformed, and separate components.
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Missing 'Authorization' header")
+		return &AuthenticationError{
+			c: http.StatusBadRequest,
+			s: "Missing 'Authorization' header",
+		}
 	}
 
 	match, err := regexp.Match(AuthRegex, []byte(authHeader))
 	if err != nil || !match {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization header does not match expected format")
+		return &AuthenticationError{
+			c: http.StatusBadRequest,
+			s: "Authorization header does not match expected format",
+		}
 	}
 
 	orgSplit := strings.Split(authHeader, " ")
@@ -302,7 +308,10 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 	actualSignatureB64 := idSplit[1]
 	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization signature is not in valid b64 encoding")
+		return &AuthenticationError{
+			c: http.StatusBadRequest,
+			s: "Authorization signature is not in valid b64 encoding",
+		}
 	}
 
 	// Always check for excessive time skew in request.
@@ -310,11 +319,17 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 	date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
 		time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Date header is not a valid format")
+		return &AuthenticationError{
+			c: http.StatusBadRequest,
+			s: "Date header is not a valid format",
+		}
 	}
 	diff := time.Now().Sub(date)
 	if diff > vg.maxTimeSkew {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "Date header's value is too old")
+		return &AuthenticationError{
+			c: http.StatusForbidden,
+			s: "Date header's value is too old",
+		}
 	}
 
 	// Load the secret key from the appropriate key provider, given the ID from the
@@ -331,26 +346,37 @@ func (vg *Vangoh) AuthenticateRequest(w http.ResponseWriter, r *http.Request) er
 
 	provider, exists := vg.keyProviders[providerKey]
 	if !exists {
-		return errorAndSetHTTPStatus(w, r, http.StatusBadRequest, "Authorization organization is not recognized")
+		return &AuthenticationError{
+			c: http.StatusBadRequest,
+			s: "Authorization organization is not recognized",
+		}
 	}
 
 	secretKey, err := provider.GetSecret([]byte(accessID))
 	if err != nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusInternalServerError, "Unable to look up secret key")
+		return &AuthenticationError{
+			c: http.StatusInternalServerError,
+			s: "Unable to look up secret key",
+		}
 	}
 	if secretKey == nil {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden, "Authorization key is not recognized")
+		return &AuthenticationError{
+			c: http.StatusForbidden,
+			s: "Authorization key is not recognized",
+		}
 	}
 
 	// Calculate the string to be signed based on the headers and Vangoh configuration.
 	expectedSignature := vg.ConstructSignature(r, secretKey)
 
 	if !hmac.Equal(expectedSignature, actualSignature) {
-		return errorAndSetHTTPStatus(w, r, http.StatusForbidden,
-			fmt.Sprintf(
+		return &AuthenticationError{
+			c: http.StatusForbidden,
+			s: fmt.Sprintf(
 				"HMAC signature does not match: expected %s, received %s",
 				base64.StdEncoding.EncodeToString(expectedSignature),
-				actualSignatureB64))
+				actualSignatureB64),
+		}
 	}
 
 	// If we have made it this far, authorization is successful.

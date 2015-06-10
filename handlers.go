@@ -1,7 +1,6 @@
 package vangoh
 
 import (
-	"fmt"
 	"net/http"
 )
 
@@ -26,12 +25,9 @@ func (vg *Vangoh) Handler(h http.Handler) http.Handler {
 		// Hand the request off to be authenticated.  If an error is encountered,
 		// err will be non-null, but AuthenticateRequest will take care of writing
 		// the appropriate http response on the ResponseWriter
-		err := vg.AuthenticateRequest(w, r)
-		if err != nil {
-			if vg.debug {
-				w.Header().Add("Content-Type", "text/plain")
-				fmt.Fprintf(w, "%s", err)
-			}
+		authErr := vg.AuthenticateRequest(r)
+		if authErr != nil {
+			authErr.WriteResponse(w, vg.debug)
 			return
 		}
 		h.ServeHTTP(w, r)
@@ -64,8 +60,10 @@ func (vg *Vangoh) NegroniHandler(w http.ResponseWriter, r *http.Request, next ht
 	// Hand the request off to be authenticated.  If an error is encountered, err
 	// will be non-null, but AuthenticateRequest will take care of writing the
 	// appropriate http response on the ResponseWriter
-	err := vg.AuthenticateRequest(w, r)
-	if err == nil && next != nil {
-		next(w, r)
+	authErr := vg.AuthenticateRequest(r)
+	if authErr != nil {
+		authErr.WriteResponse(w, vg.debug)
+		return
 	}
+	next(w, r)
 }
