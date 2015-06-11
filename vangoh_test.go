@@ -106,8 +106,7 @@ func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, voidPtr *unsaf
 		tcp.T.FailNow()
 	}
 	if voidPtr != nil {
-		dataPtr := (*testCallbackData)(*voidPtr)
-		data := *dataPtr
+		data := (*testCallbackData)(*voidPtr)
 		if data.Value != testCallbackValue {
 			tcp.T.Error("Expected to unpack the test callback value.")
 			tcp.T.FailNow()
