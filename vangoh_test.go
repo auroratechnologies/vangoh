@@ -103,6 +103,10 @@ func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, voidPtr *unsaf
 	}
 }
 
+var awsOrg = "AWS"
+var awsKey = []byte("AKIAIOSFODNN7EXAMPLE")
+var awsSecret = []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+
 var tp1 = &testProvider{
 	promptErr: false,
 	key:       []byte("testIDOne"),
@@ -123,8 +127,8 @@ var tpErr = &testProvider{
 
 var awsExampleProvider = &testProvider{
 	promptErr: false,
-	key:       []byte("AKIAIOSFODNN7EXAMPLE"),
-	secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+	key:       awsKey,
+	secret:    awsSecret,
 }
 
 func TestNew(t *testing.T) {
@@ -252,7 +256,7 @@ func TestProviderWithErrorFails(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorInProviderKeyLookup)
@@ -261,8 +265,8 @@ func TestProviderWithErrorFails(t *testing.T) {
 func TestCallbackProviderWithErrorFails(t *testing.T) {
 	var tcpErr = &testCallbackProvider{
 		promptErr: true,
-		key:       []byte("AKIAIOSFODNN7EXAMPLE"),
-		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		key:       awsKey,
+		secret:    awsSecret,
 		modifyPtr: true,
 		T:         t,
 	}
@@ -272,7 +276,7 @@ func TestCallbackProviderWithErrorFails(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorInProviderKeyLookup)
@@ -292,7 +296,7 @@ func TestCallbackProviderMissingSecret(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorSecretNotFound)
@@ -301,7 +305,7 @@ func TestCallbackProviderMissingSecret(t *testing.T) {
 func TestCallbackProviderSucceedsWithoutModifyingPtr(t *testing.T) {
 	var tcp = &testCallbackProvider{
 		promptErr: false,
-		key:       []byte("AKIAIOSFODNN7EXAMPLE"),
+		key:       []byte(awsKey),
 		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		modifyPtr: false,
 		T:         t,
@@ -312,7 +316,7 @@ func TestCallbackProviderSucceedsWithoutModifyingPtr(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -321,7 +325,7 @@ func TestCallbackProviderSucceedsWithoutModifyingPtr(t *testing.T) {
 func TestCallbackProviderSucceeds(t *testing.T) {
 	var tcp = &testCallbackProvider{
 		promptErr: false,
-		key:       []byte("AKIAIOSFODNN7EXAMPLE"),
+		key:       []byte(awsKey),
 		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		modifyPtr: true,
 		T:         t,
@@ -332,7 +336,7 @@ func TestCallbackProviderSucceeds(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -345,7 +349,7 @@ func TestMissingProviderFails(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorAuthOrgUnknown)
@@ -358,7 +362,7 @@ func TestNonSingleProviderSucceeds(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -371,7 +375,7 @@ func TestGetSucceedsWithCorrectSignature(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -399,8 +403,7 @@ func TestAwsPut(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "/johnsmith/photos/puppy.jpg", nil)
 	AddDateHeader(req)
 	req.Header.Set("Content-Type", "image/jpeg")
-	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:MyyxeRY7whkBe+bq8fHCL/2kKUg=")
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -441,7 +444,7 @@ func TestAwsUpload(t *testing.T) {
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Content-Length", "5913339")
 
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -475,7 +478,7 @@ func TestDateInBoundsSucceeds(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	tooOld := present.Add(-1 * (timeSkew - time.Second))
 	req.Header.Set("Date", tooOld.UTC().Format(time.RFC1123Z))
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
@@ -486,7 +489,7 @@ func TestDateMissingFails(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 	vg.SetMaxTimeSkew(time.Minute * 30)
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorDateHeaderMissing)
@@ -506,7 +509,7 @@ func TestDateTooOldFails(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	tooOld := present.Add(-1 * (time.Second + timeSkew))
 	req.Header.Set("Date", tooOld.UTC().Format(time.RFC1123Z))
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorDateHeaderTooSkewed)
@@ -525,7 +528,7 @@ func TestDateTooNewFails(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	skewedDateStr := (present.Add(time.Second)).UTC().Format(time.RFC1123Z)
 	req.Header.Set("Date", skewedDateStr)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorDateHeaderTooFuture)
@@ -562,7 +565,7 @@ func TestHandler(t *testing.T) {
 	resp := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	vg.Handler(testHandler).ServeHTTP(resp, req)
 	if !(testHandlerEntered && resp.Code == http.StatusOK) {

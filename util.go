@@ -2,6 +2,7 @@ package vangoh
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -12,9 +13,9 @@ func AddDateHeader(r *http.Request) {
 }
 
 // TODO(peter): org and key arguments
-func AddAuthorizationHeader(vg *Vangoh, r *http.Request, secret []byte) {
+func AddAuthorizationHeader(vg *Vangoh, r *http.Request, org string, key []byte, secret []byte) {
 	signature := vg.ConstructBase64Signature(r, secret)
-	r.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+signature)
+	r.Header.Set("Authorization", fmt.Sprintf("%s %s:%s", org, key, signature))
 }
 
 func (vg *Vangoh) ConstructBase64Signature(r *http.Request, secret []byte) string {
