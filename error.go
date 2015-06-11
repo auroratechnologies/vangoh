@@ -36,6 +36,11 @@ var ErrorAuthHeaderMalformed = &AuthenticationError{
 	s: "Authorization header does not match expected format",
 }
 
+var ErrorDateHeaderMissing = &AuthenticationError{
+	c: http.StatusBadRequest,
+	s: "Missing 'Date' header",
+}
+
 var ErrorDateHeaderMalformed = &AuthenticationError{
 	c: http.StatusBadRequest,
 	s: "Date header is not a valid format",

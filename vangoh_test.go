@@ -144,10 +144,10 @@ func TestNew(t *testing.T) {
 	if vg.includedHeaders == nil {
 		t.Error("includeHeaders not properly intialized")
 	}
-	if vg.keyProviders == nil {
-		t.Error("keyProviders not properly intialized")
+	if vg.providersByOrg == nil {
+		t.Error("providersByOrg not properly intialized")
 	}
-	if vg.singleProvider {
+	if vg.singleProvider != nil {
 		t.Error("default constructor should not create a single provider instance")
 	}
 	if !checkAlgorithm(vg, crypto.SHA256.New) {
@@ -161,10 +161,10 @@ func TestNewSingleProvider(t *testing.T) {
 	if vg.includedHeaders == nil {
 		t.Error("includeHeaders not properly intialized")
 	}
-	if vg.keyProviders == nil {
-		t.Error("keyProviders not properly intialized")
+	if vg.providersByOrg == nil {
+		t.Error("providersByOrg not properly intialized")
 	}
-	if !vg.singleProvider {
+	if vg.singleProvider == nil {
 		t.Error("singleProvider constructor should create a single provider instance")
 	}
 }
@@ -172,7 +172,7 @@ func TestNewSingleProvider(t *testing.T) {
 func TestAddProvider(t *testing.T) {
 	vg := New()
 
-	if len(vg.keyProviders) != 0 {
+	if len(vg.providersByOrg) != 0 {
 		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
@@ -181,7 +181,7 @@ func TestAddProvider(t *testing.T) {
 		t.Error("Should not have encountered error when adding a new provider")
 	}
 
-	if len(vg.keyProviders) != 1 {
+	if len(vg.providersByOrg) != 1 {
 		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
@@ -190,7 +190,7 @@ func TestAddProvider(t *testing.T) {
 		t.Error("Should error when trying to add multiple providers for same org tag")
 	}
 
-	if len(vg.keyProviders) != 1 {
+	if len(vg.providersByOrg) != 1 {
 		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
@@ -199,13 +199,12 @@ func TestAddProvider(t *testing.T) {
 		t.Error("Should not error when trying to add multiple providers for different org tags")
 	}
 
-	if len(vg.keyProviders) != 2 {
+	if len(vg.providersByOrg) != 2 {
 		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
 	spvg := NewSingleProvider(tp1)
-
-	if len(spvg.keyProviders) != 1 {
+	if len(spvg.providersByOrg) != 0 {
 		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 
@@ -213,8 +212,7 @@ func TestAddProvider(t *testing.T) {
 	if err == nil {
 		t.Error("Should error when trying to add second provider to single provider instance")
 	}
-
-	if len(spvg.keyProviders) != 1 {
+	if len(spvg.providersByOrg) != 0 {
 		t.Error("Wrong number of key providers in the Vangoh instance")
 	}
 }
@@ -492,6 +490,17 @@ func TestDateInBoundsSucceeds(t *testing.T) {
 	assertNilError(t, authErr)
 }
 
+func TestDateMissingFails(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	vg.SetMaxTimeSkew(time.Minute * 30)
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorDateHeaderMissing)
+}
+
 func TestDateTooOldFails(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
@@ -509,11 +518,7 @@ func TestDateTooOldFails(t *testing.T) {
 	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
 	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusForbidden)
-	if authErr.s != "Date header's value is too old" {
-		t.Error("Expected rejection based on past time.")
-		t.FailNow()
-	}
+	assertError(t, authErr, ErrorDateHeaderTooSkewed)
 }
 
 func TestDateTooNewFails(t *testing.T) {
