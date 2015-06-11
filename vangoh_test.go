@@ -39,17 +39,6 @@ func assertError(t *testing.T, a *AuthenticationError, e *AuthenticationError) {
 	}
 }
 
-func assertErrorWithStatus(t *testing.T, a *AuthenticationError, status int) {
-	if a == nil {
-		t.Errorf("Expected an error with HTTP Status %d, but received no error", status)
-		t.FailNow()
-	}
-	if a.StatusCode() != status {
-		t.Errorf("Expected an error with status HTTP %d, but received HTTP %d", status, a.StatusCode())
-		t.FailNow()
-	}
-}
-
 type testProvider struct {
 	promptErr bool
 	key       []byte
@@ -400,7 +389,7 @@ func TestGetFailsWithIncorrectSignature(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
 
 	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusForbidden)
+	assertError(t, authErr, ErrorHMACSignatureMismatch)
 }
 
 func TestAwsPut(t *testing.T) {
@@ -422,12 +411,13 @@ func TestAwsPutFail(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 
 	req, _ := http.NewRequest("PUT", "/johnsmith/photos/puppy.jpg", nil)
-	req.Header.Set("Date", "Tue, 27 Mar 2007 21:15:45 +0000")
+	AddDateHeader(req)
 	req.Header.Set("Content-Type", "image/jpeg")
+	// This signature is invalid.
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:NyyxeRY7whkBe+bq8fHCL/2kKUg=")
 
 	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusForbidden)
+	assertError(t, authErr, ErrorHMACSignatureMismatch)
 }
 
 func TestAwsUpload(t *testing.T) {
@@ -462,12 +452,13 @@ func TestAwsUploadFail(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 
 	req, _ := http.NewRequest("PUT", "/johnsmith/photos/puppy.jpg", nil)
-	req.Header.Set("Date", "Tue, 27 Mar 2007 21:15:45 +0000")
+	AddDateHeader(req)
 	req.Header.Set("Content-Type", "image/jpeg")
+	// This signature is invalid.
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:NyyxeRY7whkBe+bq8fHCL/2kKUg=")
 
 	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusForbidden)
+	assertError(t, authErr, ErrorHMACSignatureMismatch)
 }
 
 func TestDateInBoundsSucceeds(t *testing.T) {
@@ -537,11 +528,7 @@ func TestDateTooNewFails(t *testing.T) {
 	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
 	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusForbidden)
-	if authErr.s != "Date header's value is in the future" {
-		t.Error("Expected rejection based on future time.")
-		t.FailNow()
-	}
+	assertError(t, authErr, ErrorDateHeaderTooFuture)
 }
 
 func TestDateMalformedFails(t *testing.T) {
@@ -559,7 +546,7 @@ func TestDateMalformedFails(t *testing.T) {
 	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
 
 	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusBadRequest)
+	assertError(t, authErr, ErrorDateHeaderMalformed)
 }
 
 func TestHandler(t *testing.T) {
