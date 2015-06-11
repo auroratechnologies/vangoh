@@ -54,7 +54,7 @@ func (tp *testProvider) GetSecret(key []byte) ([]byte, error) {
 }
 
 type testCallbackProvider testProvider
-type Foo struct {
+type testCallbackData struct {
 	Value string
 }
 
@@ -65,15 +65,15 @@ func (tcp *testCallbackProvider) GetSecret(key []byte, voidPtr *unsafe.Pointer) 
 	if !bytes.Equal(tcp.key, key) {
 		return nil, nil
 	}
-	foo := &Foo{Value: "Hello!"}
-	*voidPtr = unsafe.Pointer(foo)
+	data := &testCallbackData{Value: "Hello!"}
+	*voidPtr = unsafe.Pointer(data)
 	return tcp.secret, nil
 }
 
 func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, voidPtr *unsafe.Pointer) {
-	fooPtr := (*Foo)(*voidPtr)
-	foo := *fooPtr
-	fmt.Printf("Value: %s\n", foo.Value)
+	dataPtr := (*testCallbackData)(*voidPtr)
+	data := *dataPtr
+	fmt.Printf("Value: %s\n", data.Value)
 }
 
 var tp1 = &testProvider{
@@ -221,20 +221,6 @@ func TestGetFailsWithIncorrectSignature(t *testing.T) {
 	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
-func TestGetFailsWithSkewedTime(t *testing.T) {
-	vg := NewSingleProvider(awsExampleProvider)
-	vg.SetAlgorithm(crypto.SHA1.New)
-
-	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-
-	skewedDateStr := (time.Now().Add(-1 * vg.maxTimeSkew)).UTC().Format(time.RFC1123Z)
-	req.Header.Set("Date", skewedDateStr)
-	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
-
-	authErr := vg.AuthenticateRequest(req)
-	assertErrorWithStatus(t, authErr, http.StatusForbidden)
-}
-
 func TestAwsPut(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
@@ -302,38 +288,74 @@ func TestAwsUploadFail(t *testing.T) {
 	assertErrorWithStatus(t, authErr, http.StatusForbidden)
 }
 
-func TestTimeSkew(t *testing.T) {
+func TestDateInBoundsSucceeds(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
-	date, err := time.Parse(time.RFC1123Z, "Tue, 27 Mar 2007 19:36:42 +0000")
-	if err != nil {
-		t.Error("Date couldn't be parsed")
-	}
-	skew := time.Now().Sub(date) + (time.Second * 10)
-	vg.SetMaxTimeSkew(skew)
+	timeSkew := time.Minute * 30
+	vg.SetMaxTimeSkew(timeSkew)
 
+	// Mock clock.Now().
+	present := time.Now()
+	clock.Now = func() time.Time {
+		return present
+	}
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
-	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	tooOld := present.Add(-1 * (timeSkew - time.Second))
+	req.Header.Set("Date", tooOld.UTC().Format(time.RFC1123Z))
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertNilError(t, authErr)
 }
 
-func TestTimeSkewFailue(t *testing.T) {
+func TestDateTooOldFails(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	timeSkew := time.Minute * 30
+	vg.SetMaxTimeSkew(timeSkew)
+
+	// Mock clock.Now().
+	present := time.Now()
+	clock.Now = func() time.Time {
+		return present
+	}
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	tooOld := present.Add(-1 * (time.Second + timeSkew))
+	req.Header.Set("Date", tooOld.UTC().Format(time.RFC1123Z))
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertErrorWithStatus(t, authErr, http.StatusForbidden)
+	if authErr.s != "Date header's value is too old" {
+		t.Error("Expected rejection based on past time.")
+		t.FailNow()
+	}
+}
+
+func TestDateTooNewFails(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
 	vg.SetMaxTimeSkew(time.Minute * 15)
 
+	// Mock clock.Now().
+	present := time.Now()
+	clock.Now = func() time.Time {
+		return present
+	}
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	req.Header.Set("Date", "Tue, 27 Mar 2007 19:36:42 +0000")
-	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:bWq2s1WEIj+Ydj0vQ697zp+IXMU=")
+	skewedDateStr := (present.Add(time.Second)).UTC().Format(time.RFC1123Z)
+	req.Header.Set("Date", skewedDateStr)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
 
 	authErr := vg.AuthenticateRequest(req)
 	assertErrorWithStatus(t, authErr, http.StatusForbidden)
+	if authErr.s != "Date header's value is in the future" {
+		t.Error("Expected rejection based on future time.")
+		t.FailNow()
+	}
 }
 
-func TestMalformedDate(t *testing.T) {
+func TestDateMalformedFails(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
 	date, err := time.Parse(time.RFC1123Z, "Tue, 27 Mar 2007 19:36:42 +0000")

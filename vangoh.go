@@ -317,16 +317,30 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 
 	// Always check for excessive time skew in request.
 	dateHeader := strings.TrimSpace(r.Header.Get("Date"))
-	date, err := multiFormatDateParse([]string{time.RFC822, time.RFC822Z, time.RFC850,
-		time.ANSIC, time.RFC1123, time.RFC1123Z}, dateHeader)
+	date, err := multiFormatDateParse(
+		// TODO(peter): break out into const
+		[]string{
+			time.RFC822,
+			time.RFC822Z,
+			time.RFC850,
+			time.ANSIC,
+			time.RFC1123,
+			time.RFC1123Z},
+		dateHeader)
 	if err != nil {
 		return &AuthenticationError{
 			c: http.StatusBadRequest,
 			s: "Date header is not a valid format",
 		}
 	}
-	diff := time.Now().Sub(date)
-	if diff > vg.maxTimeSkew {
+	present := clock.Now()
+	if present.Before(date) {
+		return &AuthenticationError{
+			c: http.StatusForbidden,
+			s: "Date header's value is in the future",
+		}
+	}
+	if present.Sub(date) > vg.maxTimeSkew {
 		return &AuthenticationError{
 			c: http.StatusForbidden,
 			s: "Date header's value is too old",
