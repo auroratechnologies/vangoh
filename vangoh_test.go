@@ -65,10 +65,17 @@ func (tp *testProvider) GetSecret(key []byte) ([]byte, error) {
 	return tp.secret, nil
 }
 
-type testCallbackProvider testProvider
-type testCallbackData struct {
-	Value string
+type testCallbackProvider struct {
+	promptErr bool
+	key       []byte
+	secret    []byte
+	modifyPtr bool
+	T         *testing.T
 }
+
+type testCallbackData struct{ Value string }
+
+var testCallbackValue = "testcallbackvalue"
 
 func (tcp *testCallbackProvider) GetSecret(key []byte, voidPtr *unsafe.Pointer) ([]byte, error) {
 	if tcp.promptErr {
@@ -77,15 +84,34 @@ func (tcp *testCallbackProvider) GetSecret(key []byte, voidPtr *unsafe.Pointer) 
 	if !bytes.Equal(tcp.key, key) {
 		return nil, nil
 	}
-	data := &testCallbackData{Value: "Hello!"}
-	*voidPtr = unsafe.Pointer(data)
+	if *voidPtr != nil {
+		tcp.T.Error("Expected to be passed a pointer to nil.")
+		tcp.T.FailNow()
+	}
+	if tcp.modifyPtr {
+		data := &testCallbackData{Value: testCallbackValue}
+		*voidPtr = unsafe.Pointer(data)
+	}
 	return tcp.secret, nil
 }
 
 func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, voidPtr *unsafe.Pointer) {
-	dataPtr := (*testCallbackData)(*voidPtr)
-	data := *dataPtr
-	fmt.Printf("Value: %s\n", data.Value)
+	if tcp.modifyPtr && voidPtr == nil {
+		tcp.T.Error("Expected to be passed a valid pointer.")
+		tcp.T.FailNow()
+	}
+	if !tcp.modifyPtr && voidPtr != nil {
+		tcp.T.Error("Expected to be passed a nil pointer.")
+		tcp.T.FailNow()
+	}
+	if voidPtr != nil {
+		dataPtr := (*testCallbackData)(*voidPtr)
+		data := *dataPtr
+		if data.Value != testCallbackValue {
+			tcp.T.Error("Expected to unpack the test callback value.")
+			tcp.T.FailNow()
+		}
+	}
 }
 
 var tp1 = &testProvider{
@@ -106,7 +132,7 @@ var tpErr = &testProvider{
 	secret:    []byte("secretErr"),
 }
 
-var awsExampleProvider = &testCallbackProvider{
+var awsExampleProvider = &testProvider{
 	promptErr: false,
 	key:       []byte("AKIAIOSFODNN7EXAMPLE"),
 	secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
@@ -218,7 +244,7 @@ func TestAuthHeaderMissingFails(t *testing.T) {
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorAuthHeaderMissing)
 }
-func TestAuthheaderMalformedFails(t *testing.T) {
+func TestAuthHeaderMalformedFails(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
 
@@ -230,6 +256,125 @@ func TestAuthheaderMalformedFails(t *testing.T) {
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorAuthHeaderMalformed)
+}
+
+func TestProviderWithErrorFails(t *testing.T) {
+	vg := NewSingleProvider(tpErr)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorInProviderKeyLookup)
+}
+
+func TestCallbackProviderWithErrorFails(t *testing.T) {
+	var tcpErr = &testCallbackProvider{
+		promptErr: true,
+		key:       []byte("AKIAIOSFODNN7EXAMPLE"),
+		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyPtr: true,
+		T:         t,
+	}
+	vg := NewSingleProvider(tcpErr)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorInProviderKeyLookup)
+}
+
+func TestCallbackProviderMissingSecret(t *testing.T) {
+	var tcp = &testCallbackProvider{
+		promptErr: false,
+		key:       []byte("NOTTHERIGHTKEY"),
+		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyPtr: true,
+		T:         t,
+	}
+	vg := NewSingleProvider(tcp)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorSecretNotFound)
+}
+
+func TestCallbackProviderSucceedsWithoutModifyingPtr(t *testing.T) {
+	var tcp = &testCallbackProvider{
+		promptErr: false,
+		key:       []byte("AKIAIOSFODNN7EXAMPLE"),
+		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyPtr: false,
+		T:         t,
+	}
+	vg := NewSingleProvider(tcp)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
+}
+
+func TestCallbackProviderSucceeds(t *testing.T) {
+	var tcp = &testCallbackProvider{
+		promptErr: false,
+		key:       []byte("AKIAIOSFODNN7EXAMPLE"),
+		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyPtr: true,
+		T:         t,
+	}
+	vg := NewSingleProvider(tcp)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
+}
+
+func TestMissingProviderFails(t *testing.T) {
+	vg := New()
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorAuthOrgUnknown)
+}
+func TestNonSingleProviderSucceeds(t *testing.T) {
+	vg := New()
+	vg.AddProvider("AWS", awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
 }
 
 func TestGetSucceedsWithCorrectSignature(t *testing.T) {

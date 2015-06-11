@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/hmac"
 	_ "crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"hash"
@@ -298,12 +299,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 
 	idSplit := strings.Split(orgSplit[1], ":")
 	accessID := idSplit[0]
-	// TODO(peter): instead of decoding b64, just encode known signature and compare b64 strings.
 	actualSignatureB64 := idSplit[1]
-	actualSignature, err := base64.StdEncoding.DecodeString(actualSignatureB64)
-	if err != nil {
-		return ErrorAuthHeaderInvalidEncoding
-	}
 
 	// Always check for excessive time skew in request.
 	dateHeader := strings.TrimSpace(r.Header.Get("Date"))
@@ -363,9 +359,10 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 		return ErrorSecretNotFound
 	}
 
-	// Calculate the string to be signed based on the headers and Vangoh configuration.
+	// Calculate the b64 signature and compare against the one sent by the client.
 	expectedSignature := vg.ConstructSignature(r, secretKey)
-	if !hmac.Equal(expectedSignature, actualSignature) {
+	expectedSignatureB64 := base64.StdEncoding.EncodeToString(expectedSignature)
+	if subtle.ConstantTimeCompare([]byte(expectedSignatureB64), []byte(actualSignatureB64)) != 1 {
 		return ErrorHMACSignatureMismatch
 	}
 

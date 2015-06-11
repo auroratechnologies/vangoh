@@ -42,11 +42,6 @@ var ErrorAuthHeaderMalformed = &AuthenticationError{
 	s: "Authorization header does not match expected format",
 }
 
-var ErrorAuthHeaderInvalidEncoding = &AuthenticationError{
-	c: http.StatusBadRequest,
-	s: "Authorization signature is not in valid b64 encoding",
-}
-
 var ErrorDateHeaderMalformed = &AuthenticationError{
 	c: http.StatusBadRequest,
 	s: "Date header is not a valid format",
