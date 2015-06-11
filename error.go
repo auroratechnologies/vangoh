@@ -31,3 +31,53 @@ func errorAndSetHTTPStatus(w http.ResponseWriter, r *http.Request, status int, m
 	w.WriteHeader(status)
 	return &AuthenticationError{status, message}
 }
+
+var ErrorAuthHeaderMissing = &AuthenticationError{
+	c: http.StatusBadRequest,
+	s: "Missing 'Authorization' header",
+}
+
+var ErrorAuthHeaderMalformed = &AuthenticationError{
+	c: http.StatusBadRequest,
+	s: "Authorization header does not match expected format",
+}
+
+var ErrorAuthHeaderInvalidEncoding = &AuthenticationError{
+	c: http.StatusBadRequest,
+	s: "Authorization signature is not in valid b64 encoding",
+}
+
+var ErrorDateHeaderMalformed = &AuthenticationError{
+	c: http.StatusBadRequest,
+	s: "Date header is not a valid format",
+}
+
+var ErrorDateHeaderTooFuture = &AuthenticationError{
+	c: http.StatusForbidden,
+	s: "Date header's value is in the future",
+}
+
+var ErrorDateHeaderTooSkewed = &AuthenticationError{
+	c: http.StatusForbidden,
+	s: "Date header's value is too old",
+}
+
+var ErrorAuthOrgUnknown = &AuthenticationError{
+	c: http.StatusBadRequest,
+	s: "Authentication organization is not recognized",
+}
+
+var ErrorInProviderKeyLookup = &AuthenticationError{
+	c: http.StatusInternalServerError,
+	s: "Unable to look up secret key",
+}
+
+var ErrorSecretNotFound = &AuthenticationError{
+	c: http.StatusForbidden,
+	s: "Authentication key is not recognized",
+}
+
+var ErrorHMACSignatureMismatch = &AuthenticationError{
+	c: http.StatusForbidden,
+	s: "HMAC signature does not match",
+}

@@ -26,6 +26,18 @@ func assertNilError(t *testing.T, a *AuthenticationError) {
 		t.FailNow()
 	}
 }
+func assertError(t *testing.T, a *AuthenticationError, e *AuthenticationError) {
+	if a == nil {
+		t.Errorf("Expected an error with HTTP Status %d, but received no error", e.StatusCode())
+		t.FailNow()
+	}
+	if a != e {
+		t.Errorf(
+			"Expected an error with status HTTP %d, message '%s', but received HTTP %d, message '%s'", a.StatusCode(), a, e.StatusCode(), e)
+		t.FailNow()
+	}
+}
+
 func assertErrorWithStatus(t *testing.T, a *AuthenticationError, status int) {
 	if a == nil {
 		t.Errorf("Expected an error with HTTP Status %d, but received no error", status)
@@ -193,6 +205,33 @@ func TestAlgorithm(t *testing.T) {
 		t.Error("Algorithm not correctly updated with SetAlgorithm method")
 	}
 }
+
+func TestAuthHeaderMissingFails(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	// No authorizaiton header is added.
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorAuthHeaderMissing)
+}
+func TestAuthheaderMalformedFails(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	// Add malformed header.
+	req.Header.Set("Authorization", "wooo ORG KEY:SECRET")
+
+	authErr := vg.AuthenticateRequest(req)
+	assertError(t, authErr, ErrorAuthHeaderMalformed)
+}
+
 func TestGetSucceedsWithCorrectSignature(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
