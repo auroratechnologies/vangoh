@@ -26,12 +26,6 @@ func (a *AuthenticationError) WriteResponse(w http.ResponseWriter, debug bool) {
 	}
 }
 
-// Utility function to write an HTTP status code to a request and return an error.
-func errorAndSetHTTPStatus(w http.ResponseWriter, r *http.Request, status int, message string) error {
-	w.WriteHeader(status)
-	return &AuthenticationError{status, message}
-}
-
 var ErrorAuthHeaderMissing = &AuthenticationError{
 	c: http.StatusBadRequest,
 	s: "Missing 'Authorization' header",

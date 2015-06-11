@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 	"unsafe"
@@ -555,4 +556,68 @@ func TestDateMalformedFails(t *testing.T) {
 
 	authErr := vg.AuthenticateRequest(req)
 	assertErrorWithStatus(t, authErr, http.StatusBadRequest)
+}
+
+func TestHandler(t *testing.T) {
+	// Check that successfully authenticated requests reach the inner handler.
+	testHandlerEntered := false
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		testHandlerEntered = true
+		w.WriteHeader(http.StatusOK)
+	})
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+
+	resp := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsExampleProvider.secret)
+
+	vg.Handler(testHandler).ServeHTTP(resp, req)
+	if !(testHandlerEntered && resp.Code == http.StatusOK) {
+		t.Error("Request should have succeeded.")
+		t.FailNow()
+	}
+
+	// Check that badly authenticated requests never reach the inner handler.
+	brokenHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should never be reached.")
+		t.FailNow()
+	})
+	resp = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	AddDateHeader(req)
+	validSignature := vg.ConstructBase64Signature(req, awsExampleProvider.secret)
+	invalidSignature := "aaaa" + validSignature
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
+
+	vg.Handler(brokenHandler).ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Error("Success should have failed.")
+		t.FailNow()
+	}
+
+	// Check that debug mode sets an error message in the response body.
+	resp = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	AddDateHeader(req)
+	validSignature = vg.ConstructBase64Signature(req, awsExampleProvider.secret)
+	invalidSignature = "aaaa" + validSignature
+	req.Header.Set("Authorization", "AWS AKIAIOSFODNN7EXAMPLE:"+invalidSignature)
+
+	vg.SetDebug(true)
+	vg.Handler(brokenHandler).ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Error("Success should have failed.")
+		t.FailNow()
+	}
+	if _, found := resp.Header()["Content-Type"]; !found {
+		t.Error("Expected valid content-type header.")
+		t.FailNow()
+	}
+	if len(resp.Body.Bytes()) == 0 {
+		t.Error("Expected error description in body.")
+		t.FailNow()
+	}
 }
