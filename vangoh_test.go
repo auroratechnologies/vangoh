@@ -148,6 +148,78 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestIncludeHeader(t *testing.T) {
+	// Valid regex with ^ and $ should succeed unchanged.
+	vg := New()
+	valid := "^example$"
+	vg.IncludeHeader(valid)
+	if _, found := vg.includedHeaders[valid]; !found {
+		t.Error("Valid regex was not left unmodified.")
+	}
+
+	// Valid regex without ^ should be fixed to include it.
+	missingLeadingAnchor := "example$"
+	vg = New()
+	vg.IncludeHeader(missingLeadingAnchor)
+	if _, found := vg.includedHeaders[missingLeadingAnchor]; found {
+		t.Error("Regex without anchor prefix was not left unmodified.")
+	}
+	if _, found := vg.includedHeaders[valid]; !found {
+		t.Error("Regex without anchor prefix was not fixed correctly.")
+	}
+
+	// Valid regex without $ should be fixed to include it.
+	missingTrailingAnchor := "^example"
+	vg = New()
+	vg.IncludeHeader(missingTrailingAnchor)
+	if _, found := vg.includedHeaders[missingTrailingAnchor]; found {
+		t.Error("Regex without anchor suffix was not left unmodified.")
+	}
+	if _, found := vg.includedHeaders[valid]; !found {
+		t.Error("Regex without anchor suffix was not fixed correctly.")
+	}
+
+	// Invalid regex should return an error after compilation fails.
+	invalidRegex := "^($"
+	vg = New()
+	err := vg.IncludeHeader(invalidRegex)
+	if err == nil {
+		t.Error("Invalid regex should return an error when compilation fails.")
+	}
+	if len(vg.includedHeaders) != 0 {
+		t.Error("Invalid regex should not result in any addition to includedHeaders.")
+	}
+
+	// Multiple matching regexes should not result in a header being added to the
+	// signing string multiple times.
+	vg = NewSingleProvider(awsExampleProvider)
+	regexA := "^X-.*$" // Matches X-Test.
+	err = vg.IncludeHeader(regexA)
+	if err != nil {
+		t.Error("Error adding valid header regex " + regexA)
+		t.FailNow()
+	}
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+	req.Header.Set("X-Test", "foo")
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
+
+	authErr := vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
+
+	// Add a new header regex, so that there are two regexes that match the same
+	// header, and try authenticating request with the exact same signature hash.
+	// This should succeed because the signing bodies should be the same.
+	regexB := "^X-T.*$" // Matches X-Test.
+	err = vg.IncludeHeader(regexB)
+	if err != nil {
+		t.Error("Error adding valid header regex " + regexB)
+		t.FailNow()
+	}
+	authErr = vg.AuthenticateRequest(req)
+	assertNilError(t, authErr)
+}
+
 func TestNewSingleProvider(t *testing.T) {
 	vg := NewSingleProvider(tp1)
 
