@@ -518,7 +518,8 @@ func TestDateTooOldFails(t *testing.T) {
 func TestDateTooNewFails(t *testing.T) {
 	vg := NewSingleProvider(awsExampleProvider)
 	vg.SetAlgorithm(crypto.SHA1.New)
-	vg.SetMaxTimeSkew(time.Minute * 15)
+	maxTimeSkew := time.Minute * 15
+	vg.SetMaxTimeSkew(maxTimeSkew)
 
 	// Mock clock.Now().
 	present := time.Now()
@@ -526,12 +527,12 @@ func TestDateTooNewFails(t *testing.T) {
 		return present
 	}
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
-	skewedDateStr := (present.Add(time.Second)).UTC().Format(time.RFC1123Z)
+	skewedDateStr := (present.Add(maxTimeSkew + time.Second)).UTC().Format(time.RFC1123Z)
 	req.Header.Set("Date", skewedDateStr)
 	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
-	assertError(t, authErr, ErrorDateHeaderTooFuture)
+	assertError(t, authErr, ErrorDateHeaderTooSkewed)
 }
 
 func TestDateMalformedFails(t *testing.T) {

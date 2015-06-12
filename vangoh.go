@@ -245,10 +245,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 		return ErrorDateHeaderMalformed
 	}
 	present := clock.Now()
-	if present.Before(date) {
-		return ErrorDateHeaderTooFuture
-	}
-	if present.Sub(date) > vg.maxTimeSkew {
+	if present.Sub(date) > vg.maxTimeSkew || date.Sub(present) > vg.maxTimeSkew {
 		return ErrorDateHeaderTooSkewed
 	}
 
