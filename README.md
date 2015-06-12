@@ -48,7 +48,7 @@ type inMemoryKeyProvider struct {
 // A SecretProvider must implement the GetSecret method. In this case it's a
 // simple in-memory map, although it could easily be a database connection or
 // any other implementation.
-func (imkp *inMemoryKeyProvider) GetSecretKey(identifier []byte) ([]byte, error) {
+func (imkp *inMemoryKeyProvider) GetSecret(identifier []byte) ([]byte, error) {
   key, found := imkp.keyMap[string(identifier)]
   if !found {
     // Returning nil, nil indicates to Vangoh that key was not found
