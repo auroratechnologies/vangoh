@@ -40,7 +40,7 @@ import (
 const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_/+]+:" +
 	"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
 
-// Newline character, definited in unicode, to avoid platform dependence.
+// Newline character, defined in unicode to avoid platform dependence.
 const newline = "\u000A"
 
 // Vangoh is an object that forms the primary point of configuration of the
