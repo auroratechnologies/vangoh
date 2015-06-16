@@ -151,6 +151,10 @@ func (vg *Vangoh) SetDebug(debug bool) {
 	vg.debug = debug
 }
 
+func (vg *Vangoh) GetDebug() bool {
+	return vg.debug
+}
+
 /*
 IncludeHeader specifies additional headers to include in the construction of
 the HMAC signature body for a request.

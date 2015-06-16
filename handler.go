@@ -27,7 +27,7 @@ func (vg *Vangoh) Handler(h http.Handler) http.Handler {
 		// the appropriate http response on the ResponseWriter
 		authErr := vg.AuthenticateRequest(r)
 		if authErr != nil {
-			authErr.WriteResponse(w, vg.debug)
+			authErr.WriteResponse(w, vg.GetDebug())
 			return
 		}
 		h.ServeHTTP(w, r)
@@ -62,7 +62,7 @@ func (vg *Vangoh) NegroniHandler(w http.ResponseWriter, r *http.Request, next ht
 	// appropriate http response on the ResponseWriter
 	authErr := vg.AuthenticateRequest(r)
 	if authErr != nil {
-		authErr.WriteResponse(w, vg.debug)
+		authErr.WriteResponse(w, vg.GetDebug())
 		return
 	}
 	next(w, r)
