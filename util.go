@@ -12,7 +12,6 @@ func AddDateHeader(r *http.Request) {
 	r.Header.Set("Date", datestr)
 }
 
-// TODO(peter): org and key arguments
 func AddAuthorizationHeader(vg *Vangoh, r *http.Request, org string, key []byte, secret []byte) {
 	signature := vg.ConstructBase64Signature(r, secret)
 	r.Header.Set("Authorization", fmt.Sprintf("%s %s:%s", org, key, signature))

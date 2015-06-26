@@ -43,6 +43,18 @@ const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_/+]+:" +
 // Newline character, defined in unicode to avoid platform dependence.
 const newline = "\u000A"
 
+// The names of the supported formats for the timestamp in the Date HTTP
+// header. If the timestamp does not match one of these formats, the request
+// will fail the authorization check.
+var SupportedDateFormatNames = []string{
+	time.RFC822,
+	time.RFC822Z,
+	time.RFC850,
+	time.ANSIC,
+	time.RFC1123,
+	time.RFC1123Z,
+}
+
 // An abstraction that allows test code to easily mock calls to get
 // the current time.
 var clock = struct{ Now func() time.Time }{Now: time.Now}
@@ -239,16 +251,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	if dateHeader == "" {
 		return ErrorDateHeaderMissing
 	}
-	date, err := multiFormatDateParse(
-		// TODO: break out into const.
-		[]string{
-			time.RFC822,
-			time.RFC822Z,
-			time.RFC850,
-			time.ANSIC,
-			time.RFC1123,
-			time.RFC1123Z},
-		dateHeader)
+	date, err := multiFormatDateParse(SupportedDateFormatNames, dateHeader)
 	if err != nil {
 		return ErrorDateHeaderMalformed
 	}
