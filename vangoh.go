@@ -43,6 +43,10 @@ const AuthRegex = "^[A-Za-z0-9_]+ [A-Za-z0-9_/+]+:" +
 // Newline character, defined in unicode to avoid platform dependence.
 const newline = "\u000A"
 
+// An abstraction that allows test code to easily mock calls to get
+// the current time.
+var clock = struct{ Now func() time.Time }{Now: time.Now}
+
 // Vangoh is an object that forms the primary point of configuration of the
 // middleware HMAC handler. It allows for the configuration of the hashing
 // function to use, the headers (specified as regexes) to be included in the
