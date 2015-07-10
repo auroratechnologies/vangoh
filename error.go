@@ -46,11 +46,6 @@ var ErrorDateHeaderMalformed = &AuthenticationError{
 	s: "Date header is not a valid format",
 }
 
-var ErrorDateHeaderTooFuture = &AuthenticationError{
-	c: http.StatusForbidden,
-	s: "Date header's value is in the future",
-}
-
 var ErrorDateHeaderTooSkewed = &AuthenticationError{
 	c: http.StatusForbidden,
 	s: "Date header's value is too old",
