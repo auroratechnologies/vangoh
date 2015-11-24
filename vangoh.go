@@ -355,7 +355,17 @@ func (vg *Vangoh) CreateSigningString(r *http.Request) string {
 	buffer.WriteString(r.Header.Get("Content-Type"))
 	buffer.WriteString(newline)
 
-	buffer.WriteString(r.Header.Get("Date"))
+	dateHeader := ""
+
+	if vg.customDateHeader != "" {
+		dateHeader = r.Header.Get(vg.customDateHeader)
+	}
+
+	if dateHeader == "" {
+		dateHeader = r.Header.Get("Date")
+	}
+
+	buffer.WriteString(dateHeader)
 	buffer.WriteString(newline)
 
 	customHeaders := vg.createHeadersString(r)
