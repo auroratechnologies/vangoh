@@ -645,10 +645,13 @@ func TestCustomDateFallback(t *testing.T) {
 	vg.SetAlgorithm(crypto.SHA1.New)
 	vg.SetCustomDateHeader("X-AWS-Date")
 
+	vg2 := NewSingleProvider(awsExampleProvider)
+	vg2.SetAlgorithm(crypto.SHA1.New)
+
 	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
 
 	AddDateHeader(req)
-	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
+	AddAuthorizationHeader(vg2, req, awsOrg, awsKey, awsSecret)
 
 	authErr := vg.AuthenticateRequest(req)
 
