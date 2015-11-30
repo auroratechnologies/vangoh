@@ -3,7 +3,7 @@ package vangoh
 import (
 	"bytes"
 	"crypto"
-	_ "crypto/SHA1"
+	_ "crypto/sha1"
 	"errors"
 	"fmt"
 	"hash"
@@ -623,6 +623,53 @@ func TestDateMalformedFails(t *testing.T) {
 
 	authErr := vg.AuthenticateRequest(req)
 	assertError(t, authErr, ErrorDateHeaderMalformed)
+}
+
+func TestCustomDate(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	vg.SetCustomDateHeader("X-AWS-Date")
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddCustomDateHeader(req, "X-AWS-Date")
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
+
+	authErr := vg.AuthenticateRequest(req)
+
+	assertNilError(t, authErr)
+}
+
+func TestCustomDateFallback(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	vg.SetCustomDateHeader("X-AWS-Date")
+
+	vg2 := NewSingleProvider(awsExampleProvider)
+	vg2.SetAlgorithm(crypto.SHA1.New)
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddDateHeader(req)
+	AddAuthorizationHeader(vg2, req, awsOrg, awsKey, awsSecret)
+
+	authErr := vg.AuthenticateRequest(req)
+
+	assertNilError(t, authErr)
+}
+
+func TestCustomDateMissingAllDates(t *testing.T) {
+	vg := NewSingleProvider(awsExampleProvider)
+	vg.SetAlgorithm(crypto.SHA1.New)
+	vg.SetCustomDateHeader("X-AWS-Date")
+
+	req, _ := http.NewRequest("GET", "/johnsmith/photos/puppy.jpg", nil)
+
+	AddAuthorizationHeader(vg, req, awsOrg, awsKey, awsSecret)
+
+	authErr := vg.AuthenticateRequest(req)
+
+	assertError(t, authErr, ErrorDateHeaderMissing)
 }
 
 func TestHandler(t *testing.T) {
