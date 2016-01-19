@@ -235,6 +235,20 @@ func (vg *Vangoh) SetCustomDateHeader(headerName string) {
 	vg.customDateHeader = headerName
 }
 
+func (vg *Vangoh) getDateHeaderFromRequest(r *http.Request) string {
+	dateHeader := ""
+	//Use Custom Date header if set
+	if vg.customDateHeader != "" {
+		dateHeader = strings.TrimSpace(r.Header.Get(vg.customDateHeader))
+	}
+	//fallback on "Date" header
+	if dateHeader == "" {
+		dateHeader = strings.TrimSpace(r.Header.Get("Date"))
+	}
+
+	return dateHeader
+}
+
 // Checks a request for proper authentication details, returning the relevent
 // error if the request fails this check or nil if the request passes.
 func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
@@ -254,14 +268,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	actualSignatureB64 := keySplit[1]
 
 	// Check that the request was made in the acceptable window.
-	dateHeader := ""
-	if vg.customDateHeader != "" {
-		dateHeader = strings.TrimSpace(r.Header.Get(vg.customDateHeader))
-	}
-	//fallback on "Date" header
-	if dateHeader == "" {
-		dateHeader = strings.TrimSpace(r.Header.Get("Date"))
-	}
+	dateHeader := vg.getDateHeaderFromRequest(r)
 	if dateHeader == "" {
 		return ErrorDateHeaderMissing
 	}
@@ -355,15 +362,7 @@ func (vg *Vangoh) CreateSigningString(r *http.Request) string {
 	buffer.WriteString(r.Header.Get("Content-Type"))
 	buffer.WriteString(newline)
 
-	dateHeader := ""
-
-	if vg.customDateHeader != "" {
-		dateHeader = r.Header.Get(vg.customDateHeader)
-	}
-
-	if dateHeader == "" {
-		dateHeader = r.Header.Get("Date")
-	}
+	dateHeader := vg.getDateHeaderFromRequest(r)
 
 	buffer.WriteString(dateHeader)
 	buffer.WriteString(newline)
