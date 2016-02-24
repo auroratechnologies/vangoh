@@ -90,6 +90,9 @@ type Vangoh struct {
 	// was signed and the time the request was received by the server.
 	maxTimeSkew time.Duration
 
+	// Optional custom Date Header to override the default Date Header
+	customDateHeader string
+
 	// When true, Handler() includes specific error details in the response when
 	// denying incorrectly-authenticated requests.
 	debug bool
@@ -228,6 +231,24 @@ func (vg *Vangoh) SetMaxTimeSkew(timeSkew time.Duration) {
 	vg.maxTimeSkew = timeSkew
 }
 
+func (vg *Vangoh) SetCustomDateHeader(headerName string) {
+	vg.customDateHeader = headerName
+}
+
+func (vg *Vangoh) getDateHeaderFromRequest(r *http.Request) string {
+	dateHeader := ""
+	//Use Custom Date header if set
+	if vg.customDateHeader != "" {
+		dateHeader = strings.TrimSpace(r.Header.Get(vg.customDateHeader))
+	}
+	//fallback on "Date" header
+	if dateHeader == "" {
+		dateHeader = strings.TrimSpace(r.Header.Get("Date"))
+	}
+
+	return dateHeader
+}
+
 // Checks a request for proper authentication details, returning the relevent
 // error if the request fails this check or nil if the request passes.
 func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
@@ -247,7 +268,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	actualSignatureB64 := keySplit[1]
 
 	// Check that the request was made in the acceptable window.
-	dateHeader := strings.TrimSpace(r.Header.Get("Date"))
+	dateHeader := vg.getDateHeaderFromRequest(r)
 	if dateHeader == "" {
 		return ErrorDateHeaderMissing
 	}
@@ -341,7 +362,9 @@ func (vg *Vangoh) CreateSigningString(r *http.Request) string {
 	buffer.WriteString(r.Header.Get("Content-Type"))
 	buffer.WriteString(newline)
 
-	buffer.WriteString(r.Header.Get("Date"))
+	dateHeader := vg.getDateHeaderFromRequest(r)
+
+	buffer.WriteString(dateHeader)
 	buffer.WriteString(newline)
 
 	customHeaders := vg.createHeadersString(r)
