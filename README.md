@@ -1,7 +1,7 @@
 Vangoh [![GoDoc](https://godoc.org/github.com/auroratechnologies/vangoh?status.svg)](https://godoc.org/github.com/auroratechnologies/vangoh)
 ======
 
-######The Vanilla Go HMAC handler
+###### The Vanilla Go HMAC handler
 
 
 Vangoh implements the HMAC authentication scheme popularized by [Amazon's AWS](http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html).
