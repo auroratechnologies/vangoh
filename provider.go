@@ -57,7 +57,6 @@ Example:
 			return nil, nil
 		}
 		data := &customProviderData{User: user}
-
 		cbPayload.SetPayload(data)
 		return user.Secret, nil
 	}

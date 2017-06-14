@@ -305,7 +305,6 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 	// Calculate the b64 signature and compare against the one sent by the client.
 	expectedSignature := vg.ConstructSignature(r, secret)
 	expectedSignatureB64 := base64.StdEncoding.EncodeToString(expectedSignature)
-
 	if subtle.ConstantTimeCompare([]byte(expectedSignatureB64), []byte(actualSignatureB64)) != 1 {
 		return ErrorHMACSignatureMismatch
 	}
