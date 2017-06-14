@@ -2,7 +2,6 @@ package vangoh
 
 import (
 	"net/http"
-	"unsafe"
 )
 
 /*
@@ -49,7 +48,7 @@ Example:
 	type customProviderData struct {
 		User UserDBModel
 	}
-	func (p *customProvider) GetSecret(key []byte, voidPtr *unsafe.Pointer) ([]byte, error) {
+	func (p *customProvider) GetSecret(key []byte, cbPayload *CallbackPayload) ([]byte, error) {
 		user, err := database.GetUserByKey(key)
 		if err != nil {
 			return nil, err
@@ -58,18 +57,34 @@ Example:
 			return nil, nil
 		}
 		data := &customProviderData{User: user}
-		*voidPtr = unsafe.Pointer(data)
+
+		cbPayload.SetPayload(data)
 		return user.Secret, nil
 	}
 
-	func (p *customProvider) SuccessCallback(r *http.Request, voidPtr *unsafe.Pointer) {
-		dataPtr := (*customProviderData)(*voidPtr)
-		data := *dataPtr
+	func (p *customProvider) SuccessCallback(r *http.Request, cbPayload *CallbackPayload) {
+		data, ok := cbPayload.Payload.(*customProviderData)
+		if !ok {
+			panic(errors.New("Unexpected payload found in callbackPayload"))
+		}
 		context.Set(r, UserContextKey, data.User)
 	}
 */
+
+type CallbackPayload struct {
+	payload interface{}
+}
+
+func (c *CallbackPayload) SetPayload(p interface{}) {
+	c.payload = p
+}
+
+func (c *CallbackPayload) GetPayload() interface{} {
+	return c.payload
+}
+
 type SecretProviderWithCallback interface {
 	secretProvider
-	GetSecret(key []byte, voidPtr *unsafe.Pointer) ([]byte, error)
-	SuccessCallback(r *http.Request, voidPtr *unsafe.Pointer)
+	GetSecret(key []byte, cbPayload *CallbackPayload) ([]byte, error)
+	SuccessCallback(r *http.Request, cbPayload *CallbackPayload)
 }
