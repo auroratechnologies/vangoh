@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-	"unsafe"
 )
 
 func checkAlgorithm(vg *Vangoh, algo func() hash.Hash) bool {
@@ -56,46 +55,50 @@ func (tp *testProvider) GetSecret(key []byte) ([]byte, error) {
 }
 
 type testCallbackProvider struct {
-	promptErr bool
-	key       []byte
-	secret    []byte
-	modifyPtr bool
-	T         *testing.T
+	promptErr             bool
+	key                   []byte
+	secret                []byte
+	modifyCallbackPayload bool
+	T                     *testing.T
 }
 
 type testCallbackData struct{ Value string }
 
 var testCallbackValue = "testcallbackvalue"
 
-func (tcp *testCallbackProvider) GetSecret(key []byte, voidPtr *unsafe.Pointer) ([]byte, error) {
+func (tcp *testCallbackProvider) GetSecret(key []byte, cbPayload *CallbackPayload) ([]byte, error) {
 	if tcp.promptErr {
 		return nil, errors.New("testing error")
 	}
 	if !bytes.Equal(tcp.key, key) {
 		return nil, nil
 	}
-	if *voidPtr != nil {
-		tcp.T.Error("Expected to be passed a pointer to nil.")
+	if cbPayload.GetPayload() != nil {
+		tcp.T.Error("Expected to be passed a nil cbPayload.")
 		tcp.T.FailNow()
 	}
-	if tcp.modifyPtr {
-		data := &testCallbackData{Value: testCallbackValue}
-		*voidPtr = unsafe.Pointer(data)
+	if tcp.modifyCallbackPayload {
+		cbPayload.SetPayload(&testCallbackData{Value: testCallbackValue})
 	}
 	return tcp.secret, nil
 }
 
-func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, voidPtr *unsafe.Pointer) {
-	if tcp.modifyPtr && voidPtr == nil {
-		tcp.T.Error("Expected to be passed a valid pointer.")
+func (tcp *testCallbackProvider) SuccessCallback(r *http.Request, cbPayload *CallbackPayload) {
+	if tcp.modifyCallbackPayload && cbPayload.GetPayload() == nil {
+		tcp.T.Error("Expected to be passed a valid cbPayload.")
 		tcp.T.FailNow()
 	}
-	if !tcp.modifyPtr && voidPtr != nil {
-		tcp.T.Error("Expected to be passed a nil pointer.")
+	if !tcp.modifyCallbackPayload && cbPayload.GetPayload() != nil {
+		tcp.T.Error("Expected to be passed a nil cbPayload.")
 		tcp.T.FailNow()
 	}
-	if voidPtr != nil {
-		data := (*testCallbackData)(*voidPtr)
+	payload := cbPayload.GetPayload()
+	if payload != nil {
+		data, ok := payload.(*testCallbackData)
+		if !ok {
+			tcp.T.Error("Expected callback payload to cast to testCallbackData")
+			tcp.T.FailNow()
+		}
 		if data.Value != testCallbackValue {
 			tcp.T.Error("Expected to unpack the test callback value.")
 			tcp.T.FailNow()
@@ -336,11 +339,11 @@ func TestProviderWithErrorFails(t *testing.T) {
 
 func TestCallbackProviderWithErrorFails(t *testing.T) {
 	var tcpErr = &testCallbackProvider{
-		promptErr: true,
-		key:       awsKey,
-		secret:    awsSecret,
-		modifyPtr: true,
-		T:         t,
+		promptErr:             true,
+		key:                   awsKey,
+		secret:                awsSecret,
+		modifyCallbackPayload: true,
+		T: t,
 	}
 	vg := NewSingleProvider(tcpErr)
 	vg.SetAlgorithm(crypto.SHA1.New)
@@ -356,11 +359,11 @@ func TestCallbackProviderWithErrorFails(t *testing.T) {
 
 func TestCallbackProviderMissingSecret(t *testing.T) {
 	var tcp = &testCallbackProvider{
-		promptErr: false,
-		key:       []byte("NOTTHERIGHTKEY"),
-		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
-		modifyPtr: true,
-		T:         t,
+		promptErr:             false,
+		key:                   []byte("NOTTHERIGHTKEY"),
+		secret:                []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyCallbackPayload: true,
+		T: t,
 	}
 	vg := NewSingleProvider(tcp)
 	vg.SetAlgorithm(crypto.SHA1.New)
@@ -376,11 +379,11 @@ func TestCallbackProviderMissingSecret(t *testing.T) {
 
 func TestCallbackProviderSucceedsWithoutModifyingPtr(t *testing.T) {
 	var tcp = &testCallbackProvider{
-		promptErr: false,
-		key:       []byte(awsKey),
-		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
-		modifyPtr: false,
-		T:         t,
+		promptErr:             false,
+		key:                   []byte(awsKey),
+		secret:                []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyCallbackPayload: false,
+		T: t,
 	}
 	vg := NewSingleProvider(tcp)
 	vg.SetAlgorithm(crypto.SHA1.New)
@@ -396,11 +399,11 @@ func TestCallbackProviderSucceedsWithoutModifyingPtr(t *testing.T) {
 
 func TestCallbackProviderSucceeds(t *testing.T) {
 	var tcp = &testCallbackProvider{
-		promptErr: false,
-		key:       []byte(awsKey),
-		secret:    []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
-		modifyPtr: true,
-		T:         t,
+		promptErr:             false,
+		key:                   []byte(awsKey),
+		secret:                []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		modifyCallbackPayload: true,
+		T: t,
 	}
 	vg := NewSingleProvider(tcp)
 	vg.SetAlgorithm(crypto.SHA1.New)
