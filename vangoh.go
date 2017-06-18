@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unsafe"
 )
 
 // Expected regex format of the Authorization signature.
@@ -294,12 +293,12 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 		}
 	}
 
-	var voidPtr unsafe.Pointer = nil
+	cbPayload := &CallbackPayload{}
 	var secret []byte
 
 	switch provider := provider.(type) {
 	case SecretProviderWithCallback:
-		secret, err = provider.GetSecret(key, &voidPtr)
+		secret, err = provider.GetSecret(key, cbPayload)
 	case SecretProvider:
 		secret, err = provider.GetSecret(key)
 	}
@@ -319,11 +318,7 @@ func (vg *Vangoh) AuthenticateRequest(r *http.Request) *AuthenticationError {
 
 	switch provider := provider.(type) {
 	case SecretProviderWithCallback:
-		if voidPtr != nil {
-			provider.SuccessCallback(r, &voidPtr)
-		} else {
-			provider.SuccessCallback(r, nil)
-		}
+		provider.SuccessCallback(r, cbPayload)
 	}
 	// If we have made it this far, authentication is successful.
 	return nil
