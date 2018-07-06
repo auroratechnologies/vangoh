@@ -11,7 +11,7 @@ func AddDateHeader(r *http.Request) {
 	AddCustomDateHeader(r, "Date")
 }
 
-func AddCustomDateHeader( r *http.Request, headerName string) {
+func AddCustomDateHeader(r *http.Request, headerName string) {
 	datestr := time.Now().UTC().Format(time.RFC1123Z)
 	r.Header.Set(headerName, datestr)
 }
